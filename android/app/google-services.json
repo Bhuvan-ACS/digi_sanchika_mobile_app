@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "935714157151",
+    "project_id": "fawnix-32023",
+    "storage_bucket": "fawnix-32023.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:935714157151:android:79d8b8a2fa35d738f4e1ea",
+        "android_client_info": {
+          "package_name": "com.acstechnologies.fawnix"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAyQCzMWv2mMC1Fzzw_3eQTxyGBr2Ji6Rk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:935714157151:android:d55581271699464bf4e1ea",
+        "android_client_info": {
+          "package_name": "com.digisanchika.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAyQCzMWv2mMC1Fzzw_3eQTxyGBr2Ji6Rk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
