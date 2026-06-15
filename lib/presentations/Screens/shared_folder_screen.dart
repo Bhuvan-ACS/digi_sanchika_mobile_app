@@ -135,9 +135,7 @@ class _SharedFolderScreenState extends State<SharedFolderScreen> {
     );
   }
 
-  void _goBack() {
-    Navigator.pop(context);
-  }
+ 
 
   // ============ FILTERING ============
   List<Document> _filterDocuments() {
@@ -740,11 +738,11 @@ class _SharedFolderScreenState extends State<SharedFolderScreen> {
       onTap: () => _handleDocumentDoubleTap(document),
       borderRadius: BorderRadius.circular(12),
       child: Card(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         elevation: 2,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -785,8 +783,8 @@ class _SharedFolderScreenState extends State<SharedFolderScreen> {
                               },
                               child: AnimatedContainer(
                                 duration: const Duration(milliseconds: 300),
-                                width: 36,
-                                height: 36,
+                                width: 20,
+                                height: 20,
                                 decoration: BoxDecoration(
                                   color: isExpanded
                                       ? color.withAlpha(20)
@@ -836,11 +834,10 @@ class _SharedFolderScreenState extends State<SharedFolderScreen> {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 4),
                         Text(
                           'Type: ${document.type} • $formattedDate',
                           style: TextStyle(
-                            fontSize: 11,
+                            fontSize: 12,
                             color: Colors.grey.shade600,
                           ),
                         ),
@@ -1197,7 +1194,7 @@ class _SharedFolderScreenState extends State<SharedFolderScreen> {
         onTap: () => _handleDocumentDoubleTap(document),
         borderRadius: BorderRadius.circular(12),
         child: Container(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
@@ -1206,7 +1203,7 @@ class _SharedFolderScreenState extends State<SharedFolderScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(10),
+                    padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
                       color: color.withAlpha(20),
                       borderRadius: BorderRadius.circular(10),
@@ -1967,10 +1964,7 @@ class _SharedFolderScreenState extends State<SharedFolderScreen> {
 
     return DismissKeyboard(child: Scaffold(
       appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: _goBack,
-        ),
+   
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

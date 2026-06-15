@@ -141,6 +141,7 @@ class SharedDocumentsResponse {
                 folderData['owner']?.toString() ??
                 'Unknown User',
             createdAt: _formatDate(folderData['created_at']),
+            expiresAt: _formatDate(folderData['expires_at']),
           );
           folders.add(folder);
         } catch (e) {

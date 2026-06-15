@@ -17,63 +17,43 @@ class SharedFoldersService {
     return normalized.endsWith('/api') ? '/shares' : '/api/shares';
   }
 
-  Future<List<SharedFolder>> fetchSharedFolders() async {
-    try {
-      final response = await _dio.get('$_sharesBasePath/shared-with-me');
-      if (response.statusCode == 200) {
-        final data = response.data;
-        List<dynamic> foldersData = [];
-        if (data is Map<String, dynamic>) {
-          if (data['folders'] is List) {
-            foldersData = data['folders'];
-          } else if (data['items'] is List) {
-            foldersData = data['items'];
-          } else if (data['data'] is Map<String, dynamic> &&
-              data['data']['folders'] is List) {
-            foldersData = data['data']['folders'];
-          }
+ Future<List<SharedFolder>> fetchSharedFolders() async {
+  try {
+    final response = await _dio.get(
+      '$_sharesBasePath/shared-with-me',
+    );
+
+    if (response.statusCode == 200) {
+      final data = response.data;
+
+      List<dynamic> foldersData = [];
+
+      if (data is Map<String, dynamic>) {
+        if (data['folders'] is List) {
+          foldersData = data['folders'];
+        } else if (data['items'] is List) {
+          foldersData = data['items'];
+        } else if (data['data'] is Map<String, dynamic> &&
+            data['data']['folders'] is List) {
+          foldersData = data['data']['folders'];
         }
-        return foldersData.map<SharedFolder>((folderJson) {
-          final raw = Map<String, dynamic>.from(folderJson as Map);
-          final folder =
-              raw['folder'] is Map<String, dynamic>
-                  ? Map<String, dynamic>.from(raw['folder'])
-                  : raw;
-          final sharedBy =
-              raw['sharedBy'] is Map<String, dynamic>
-                  ? Map<String, dynamic>.from(raw['sharedBy'])
-                  : null;
-          final rawCount = raw['item_count'] ??
-              raw['items_count'] ??
-              raw['document_count'] ??
-              raw['total_files'] ??
-              folder['item_count'] ??
-              folder['items_count'] ??
-              folder['document_count'];
-          final itemCount = rawCount is int
-              ? rawCount
-              : (rawCount != null ? int.tryParse(rawCount.toString()) ?? -1 : -1);
-          return SharedFolder(
-            id: (folder['id'] ?? 0).toString(),
-            name: folder['name']?.toString() ?? 'Unknown Folder',
-            owner:
-                sharedBy?['full_name']?.toString() ??
-                sharedBy?['name']?.toString() ??
-                folder['owner']?.toString() ??
-                'Unknown User',
-            createdAt: folder['created_at']?.toString() ?? '',
-            itemCount: itemCount,
-          );
-        }).toList();
       }
-      return [];
-    } catch (e) {
-      if (kDebugMode) {
-        print('Error fetching shared folders: $e');
-      }
-      return [];
+
+      return foldersData
+          .map<SharedFolder>(
+            (json) => SharedFolder.fromJson(
+              Map<String, dynamic>.from(json),
+            ),
+          )
+          .toList();
     }
+
+    return [];
+  } catch (e) {
+    debugPrint('Error fetching shared folders: $e');
+    return [];
   }
+}
 
   Future<Map<String, dynamic>> getSharedFolderContents(String folderId) async {
     try {

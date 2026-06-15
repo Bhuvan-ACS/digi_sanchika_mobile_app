@@ -45,7 +45,7 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
   final DocumentOpenerService _documentOpener = DocumentOpenerService();
 
   // Controllers
-  final TextEditingController _searchController = TextEditingController();
+  final TextEditingController _searchController = TextEditingController();    
 
   // State variables
   List<Document> _sharedDocuments = [];
@@ -110,6 +110,7 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
                       name: f.name,
                       owner: f.owner,
                       createdAt: f.createdAt,
+                      expiresAt: f.expiresAt,
                       itemCount: countMap[f.id]!,
                     )
                   : f,
@@ -125,6 +126,17 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
   void initState() {
     super.initState();
     _loadSharedData();
+ print("shared data $_filteredDocuments");
+ _sharedFoldersService.fetchSharedFolders().then((folders) {
+      print('Fetched ${folders.length} shared folders:');
+      for (final folder in folders) {
+        print(
+          'Id: ${folder.id}, Name: ${folder.name}, Owner: ${folder.owner}, CreatedAt: ${folder.createdAt}, ExpiresAt: ${folder.expiresAt}, ItemCount: ${folder.itemCount}',
+        );
+      }
+    }).catchError((e) {
+      print('Error fetching shared folders: $e');
+    });
   }
 
   @override
@@ -173,6 +185,7 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
       final List<Document> documents = response.documents;
       final List<SharedFolder> folders = response.folders;
 
+    
       if (!mounted) return;
 
       // Extract unique file types from documents
@@ -191,6 +204,21 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
         _availableFileTypes = ['All', ...fileTypes];
         _isLoading = false;
       });
+print('SharedFolder JSON: $json');
+print('Folders count: ${folders.length}');
+
+
+     for (final folder in _sharedFolders) {
+  print(
+    'Id: ${folder.id}, '
+    'Name: ${folder.name}, '
+    'Owner: ${folder.owner}, '
+    'CreatedAt: ${folder.createdAt}, '
+    'ExpiresAt: ${folder.expiresAt}, '
+    'ItemCount: ${folder.itemCount}',
+  );
+}
+
 
       // Best-effort: fetch per-folder item counts for better UX.
       unawaited(_hydrateSharedFolderCounts(folders));
@@ -1145,11 +1173,11 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
   // ============ FEATURE 1: COLLAPSIBLE DOCUMENT CARDS ============
 
   // Build document item card with COLLAPSIBLE functionality
-  Widget _buildDocumentCard(BuildContext context, Document document, int index) {
+  Widget _buildDocumentCard(BuildContext context, Document document, int index,) {
     final r = context.r;
     final iconData = _getFileIcon(document.type);
     final color = _getFileColor(document.type);
-
+print("document upload date: ${document.name} - ${document.uploadDate}");
     // Format the date to DD MM YYYY
     String formattedDate = _formatDateDDMMYYYY(document.uploadDate);
     String uniqueKey = document.id.isNotEmpty ? document.id : 'doc_$index';
@@ -1328,6 +1356,12 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
                         Icons.security,
                         r: r,
                       ),
+                     _buildDetailRowWithIcon(
+  'Expires in',
+  document.expiresAt ?? 'No Expiry',
+  Icons.schedule,
+  r: r,
+),
                       if (document.details.isNotEmpty)
                         _buildDetailRowWithIcon(
                           'Details',
@@ -1764,6 +1798,7 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
                                 ),
                               ],
                             ),
+                            
                           ],
                         ),
                       ],
@@ -2107,27 +2142,7 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
   Widget build(BuildContext context) {
     final r = context.r;
     return DismissKeyboard(child: Scaffold(
-      appBar: AppBar(
-        title: Text(
-          'Shared With Me',
-          style: TextStyle(
-            fontSize: r.sp(19),
-            fontWeight: FontWeight.w600,
-            color: Colors.indigo,
-          ),
-        ),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
-        leading: IconButton(
-          icon: Icon(
-            Icons.arrow_back_ios_new_rounded,
-            size: r.sp(20),
-            color: Colors.indigo,
-          ),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
+     
       body: ResponsivePage(
         padding: EdgeInsets.zero,
         child: Column(
@@ -2194,39 +2209,7 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
                     _buildLayoutSelector(),
                     SizedBox(width: r.p(12)),
                     // Folders button - Only show if needed
-                    if (_sharedFolders.isNotEmpty)
-                      Container(
-                        constraints: BoxConstraints(maxWidth: r.p(80)),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(r.p(12)),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.grey.withAlpha(10),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: ElevatedButton.icon(
-                          onPressed: _showSharedFolders,
-                          icon: Icon(Icons.folder_shared, size: r.sp(18)),
-                          label: Text(
-                            '${_sharedFolders.length}',
-                            style: TextStyle(fontSize: r.sp(11)),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            foregroundColor: Colors.indigo,
-                            padding: EdgeInsets.symmetric(
-                              horizontal: r.p(10),
-                              vertical: r.p(10),
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(r.p(12)),
-                            ),
-                          ),
-                        ),
-                      ),
+                  
                   ],
                 ),
                 SizedBox(height: r.p(8)),
@@ -2241,15 +2224,7 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
                       ),
                     ),
                     _buildFileTypeBadge(r),
-                    const Spacer(),
-                    if (_sharedFolders.isNotEmpty)
-                      Text(
-                        '${_sharedFolders.length} folder${_sharedFolders.length == 1 ? '' : 's'}',
-                        style: TextStyle(
-                          color: Colors.grey.shade600,
-                          fontSize: r.sp(13),
-                        ),
-                      ),
+                   
                   ],
                 ),
               ],
