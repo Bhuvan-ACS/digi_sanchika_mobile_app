@@ -1,72 +1,103 @@
-// models/shared_folder.dart
 class SharedFolder {
   final String id;
   final String name;
   final String owner;
   final String createdAt;
-  final int itemCount; // -1 = unknown
+  final String expiresAt;
+  final int itemCount;
 
   SharedFolder({
     required this.id,
     required this.name,
     required this.owner,
     required this.createdAt,
+    required this.expiresAt,
     this.itemCount = -1,
   });
 
-  Map<String, dynamic> toJson() {
-    return {'id': id, 'name': name, 'owner': owner, 'createdAt': createdAt, 'itemCount': itemCount};
-  }
-
   factory SharedFolder.fromJson(Map<String, dynamic> json) {
-    final count = json['item_count'] ??
+    final folder =
+        json['folder'] is Map<String, dynamic>
+            ? Map<String, dynamic>.from(json['folder'])
+            : json;
+
+    final share =
+        json['share'] is Map<String, dynamic>
+            ? Map<String, dynamic>.from(json['share'])
+            : <String, dynamic>{};
+
+    final sharedBy =
+        json['sharedBy'] is Map<String, dynamic>
+            ? Map<String, dynamic>.from(json['sharedBy'])
+            : <String, dynamic>{};
+
+    final count =
+        json['item_count'] ??
         json['items_count'] ??
         json['document_count'] ??
         json['total_files'] ??
-        json['files_count'];
+        folder['item_count'] ??
+        folder['items_count'] ??
+        folder['document_count'];
 
-    String? from(dynamic v) {
-      if (v == null) return null;
-      if (v is String) {
-        final s = v.trim();
-        return s.isEmpty ? null : s;
-      }
-      if (v is Map) {
-        final name = v['name'] ?? v['full_name'] ?? v['username'];
-        if (name is String && name.trim().isNotEmpty) return name.trim();
-      }
-      return null;
-    }
-
-    final ownerName =
-        from(json['shared_by']) ??
-        from(json['sharedBy']) ??
-        from(json['owner']) ??
-        from(json['owner_name']) ??
-        from(json['shared_by_name']) ??
-        from(json['created_by']) ??
-        from(json['uploader']) ??
-        'Unknown User';
     return SharedFolder(
-      id: (json['id'] ?? 0).toString(),
-      name: json['name']?.toString() ?? 'Unknown Folder',
-      owner: ownerName,
-      createdAt: _formatDate(json['created_at']),
+      id: (folder['id'] ?? '').toString(),
+      name: folder['name']?.toString() ?? 'Unknown Folder',
+      owner:
+          sharedBy['full_name']?.toString() ??
+          sharedBy['name']?.toString() ??
+          folder['owner']?.toString() ??
+          'Unknown User',
+      createdAt: _formatDate(
+        folder['created_at'] ?? share['created_at'],
+      ),
+      expiresAt:
+    (share['expires_at'] ?? folder['expires_at'])!.toString(),
       itemCount: count is int
           ? count
-          : (count != null ? int.tryParse(count.toString()) ?? -1 : -1),
+          : int.tryParse(count?.toString() ?? '') ?? -1,
     );
   }
 
-  static String _formatDate(dynamic date) {
-    if (date == null) return 'Unknown';
-    try {
-      final dateTime = DateTime.parse(date.toString());
-      return '${dateTime.day.toString().padLeft(2, '0')}/${dateTime.month.toString().padLeft(2, '0')}/${dateTime.year}';
-    } catch (e) {
-      final dateStr = date.toString();
-      if (dateStr.contains('/')) return dateStr;
-      return dateStr;
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'owner': owner,
+      'createdAt': createdAt,
+      'expiresAt': expiresAt,
+      'itemCount': itemCount,
+    };
+  }
+
+  static String _formatDate(dynamic value) {
+  if (value == null) return 'No Expiry';
+
+  try {
+    final date = DateTime.parse(value.toString());
+
+    // Handle backend's "no expiry" value
+    if (date.year >= 9999) {
+      return 'No Expiry';
     }
+
+    return '${date.day.toString().padLeft(2, '0')}/'
+        '${date.month.toString().padLeft(2, '0')}/'
+        '${date.year}';
+  } catch (_) {
+    return value.toString();
+  }
+}
+
+  @override
+  String toString() {
+    return 'SharedFolder('
+        'id: $id, '
+        'name: $name, '
+        'owner: $owner, '
+        'createdAt: $createdAt, '
+        'expiresAt: $expiresAt, '
+        'itemCount: $itemCount'
+        ')';
   }
 }

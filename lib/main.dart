@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:device_preview/device_preview.dart';
 import 'package:digi_sanchika/presentations/Screens/home_page.dart';
 import 'package:digi_sanchika/presentations/Screens/login_page.dart';
 import 'package:digi_sanchika/presentations/Screens/push_debug_screen.dart';
@@ -89,17 +90,23 @@ class DigiSanchikaApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Digi Sanchika',
-      debugShowCheckedModeBanner: false,
-      theme: buildAppTheme(),
-      navigatorKey: rootNavigatorKey,
-      home: const _AuthGate(),
-      routes: {
-        '/login': (context) => const LoginPage(),
-        '/home': (context) => const HomePage(),
-        '/push-debug': (context) => const PushDebugScreen(),
-      },
+    return DevicePreview(
+          enabled: false,
+          tools: const [...DevicePreview.defaultTools],  builder: (context) {
+        return MaterialApp(
+          title: 'Digi Sanchika',
+          useInheritedMediaQuery: true,
+          debugShowCheckedModeBanner: false,
+          theme: buildAppTheme(),
+          navigatorKey: rootNavigatorKey,
+          home: const _AuthGate(),
+          routes: {
+            '/login': (context) => const LoginPage(),
+            '/home': (context) => const HomePage(),
+            '/push-debug': (context) => const PushDebugScreen(),
+          },
+        );
+      }
     );
   }
 }

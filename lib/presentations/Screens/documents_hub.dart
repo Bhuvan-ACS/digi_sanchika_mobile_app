@@ -1,5 +1,6 @@
+import 'package:digi_sanchika/presentations/Screens/shared_with_me_screen.dart';
 import 'package:flutter/material.dart';
-import 'package:digi_sanchika/presentations/Screens/shared_me.dart';
+import 'package:digi_sanchika/presentations/Screens/shared_files_screen.dart';
 import 'package:digi_sanchika/presentations/Screens/document_library.dart';
 import 'package:digi_sanchika/presentations/screens/folder_manager_screen.dart';
 
@@ -153,7 +154,7 @@ class DocumentsHub extends StatelessWidget {
                     iconColor: const Color(0xFF7E57C2),
                     iconBackground: const Color(0xFF7E57C2).withOpacity(0.1),
                     onTap: () =>
-                        _navigateToScreen(context, const SharedMeScreen()),
+                        _navigateToScreen(context, const SharedWithMeScreen()),
                   ),
 
                   const SizedBox(height: 16),

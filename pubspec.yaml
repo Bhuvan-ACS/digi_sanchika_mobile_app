@@ -38,7 +38,7 @@ dependencies:
   shared_preferences: ^2.2.2
   permission_handler: ^11.0.1
   path_provider: ^2.1.3  # For accessing device directories (use latest version)
-  syncfusion_flutter_xlsio: ^23.1.44
+  syncfusion_flutter_xlsio: ^29.2.11
   http: ^1.1.0
   flutter_secure_storage: ^8.0.0
   dio: ^5.7.0
@@ -68,6 +68,10 @@ dependencies:
   # Optional device/app metadata for token registration
   device_info_plus: ^9.1.2
   package_info_plus: ^9.0.0
+  device_preview: ^1.3.1
+  flutter_screenutil: ^5.9.3
+  buttons_tabbar: ^1.3.15
+
   
 
 
