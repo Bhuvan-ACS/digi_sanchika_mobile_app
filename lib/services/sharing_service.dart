@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:digi_sanchika/models/folder_members.dart';
 import 'package:digi_sanchika/models/group_member.dart';
 import 'package:digi_sanchika/models/sharing_models.dart';
 import 'package:digi_sanchika/services/api_client.dart';
@@ -398,6 +399,27 @@ class SharingService {
       'documentId': documentId,
       'data': confirm.data,
     };
+  }
+
+  /// GET /api/shares/folders/:folderId/members
+  ///
+  /// Returns every user who currently has access to [folderId], together with
+  /// how that access was granted (direct vs. group).
+  ///
+  /// Throws a [DioException] on network errors; re-throws a [StateError] if
+  /// the server returns a non-200 status.
+  Future<FolderMembersResponse> getFolderMembers(String folderId) async {
+    assert(folderId.isNotEmpty, 'folderId must not be empty');
+    final response = await _dio.get(
+      '$_sharesBasePath/folders/$folderId/members',
+    );
+    if (response.statusCode != 200) {
+      throw StateError(
+        'getFolderMembers: unexpected status ${response.statusCode}',
+      );
+    }
+    final map = _asMap(response.data) ?? const <String, dynamic>{};
+    return FolderMembersResponse.fromJson(map);
   }
 
   String _guessMime(String fileName) {

@@ -1,3 +1,6 @@
+﻿import 'package:digi_sanchika/utils/app_fonts.dart';
+import 'package:digi_sanchika/utils/app_theme.dart';
+import 'package:digi_sanchika/utils/screen_utils.dart' hide height5;
 import 'package:flutter/material.dart';
 import 'package:digi_sanchika/utils/responsive_helper.dart';
 import 'package:digi_sanchika/services/folder_service.dart';
@@ -261,7 +264,7 @@ class _FolderScreenState extends State<FolderScreen> {
           content: Text(
             isFav ? 'Failed to remove favorite' : 'Failed to add favorite',
           ),
-          backgroundColor: Colors.red,
+          backgroundColor: AppColors.error,
         ),
       );
     }
@@ -364,7 +367,7 @@ class _FolderScreenState extends State<FolderScreen> {
               _deleteDocument(index);
               Navigator.pop(context);
             },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
             child: const Text('Delete'),
           ),
         ],
@@ -395,7 +398,7 @@ class _FolderScreenState extends State<FolderScreen> {
               Navigator.pop(ctx);
               _showPermanentDeleteConfirmation(document);
             },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
             child: const Text(
               'Delete Permanently',
               style: TextStyle(color: Colors.white),
@@ -455,7 +458,7 @@ class _FolderScreenState extends State<FolderScreen> {
                   ScaffoldMessenger.of(this.context).showSnackBar(
                     SnackBar(
                       content: Text('"${document.name}" permanently deleted'),
-                      backgroundColor: Colors.red,
+                      backgroundColor: AppColors.error,
                     ),
                   );
                 } else {
@@ -468,7 +471,7 @@ class _FolderScreenState extends State<FolderScreen> {
                                 'Permanent delete failed')
                             .toString(),
                       ),
-                      backgroundColor: Colors.red,
+                      backgroundColor: AppColors.error,
                     ),
                   );
                 }
@@ -477,12 +480,12 @@ class _FolderScreenState extends State<FolderScreen> {
                 ScaffoldMessenger.of(this.context).showSnackBar(
                   SnackBar(
                     content: Text('Error: $e'),
-                    backgroundColor: Colors.red,
+                    backgroundColor: AppColors.error,
                   ),
                 );
               }
             },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
             child: const Text(
               'Delete Permanently',
               style: TextStyle(color: Colors.white),
@@ -522,7 +525,7 @@ class _FolderScreenState extends State<FolderScreen> {
         ScaffoldMessenger.maybeOf(context)?.showSnackBar(
           SnackBar(
             content: Text('Moved "${docToDelete.name}" to Recycle Bin'),
-            backgroundColor: Colors.orange,
+            backgroundColor: AppColors.warning,
           ),
         );
         // Auto-refresh to reflect backend state and folder counts.
@@ -534,7 +537,7 @@ class _FolderScreenState extends State<FolderScreen> {
         ScaffoldMessenger.maybeOf(context)?.showSnackBar(
           SnackBar(
             content: Text('Failed to delete: $e'),
-            backgroundColor: Colors.red,
+            backgroundColor: AppColors.error,
           ),
         );
       }
@@ -546,7 +549,7 @@ class _FolderScreenState extends State<FolderScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Cannot download while offline'),
-          backgroundColor: Colors.orange,
+          backgroundColor: AppColors.warning,
         ),
       );
       return;
@@ -588,8 +591,8 @@ class _FolderScreenState extends State<FolderScreen> {
                   : (reqResult['message'] ?? 'Download request failed'),
             ),
             backgroundColor: reqResult['success'] == true
-                ? Colors.orange
-                : Colors.red,
+                ? AppColors.warning
+                : AppColors.error,
           ),
         );
       } else {
@@ -600,7 +603,7 @@ class _FolderScreenState extends State<FolderScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Download failed: $e'),
-          backgroundColor: Colors.red,
+          backgroundColor: AppColors.error,
         ),
       );
     } finally {
@@ -617,7 +620,7 @@ class _FolderScreenState extends State<FolderScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Cannot download while offline'),
-          backgroundColor: Colors.orange,
+          backgroundColor: AppColors.warning,
         ),
       );
       return;
@@ -652,8 +655,8 @@ class _FolderScreenState extends State<FolderScreen> {
                         'Download requires approval'),
             ),
             backgroundColor: (result['requestCreated'] == true)
-                ? Colors.orange
-                : Colors.red,
+                ? AppColors.warning
+                : AppColors.error,
           ),
         );
         return;
@@ -670,7 +673,7 @@ class _FolderScreenState extends State<FolderScreen> {
             }
             return err;
           }()),
-          backgroundColor: Colors.red,
+          backgroundColor: AppColors.error,
         ),
       );
     } catch (e) {
@@ -678,7 +681,7 @@ class _FolderScreenState extends State<FolderScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Download failed: $e'),
-          backgroundColor: Colors.red,
+          backgroundColor: AppColors.error,
         ),
       );
     }
@@ -689,7 +692,7 @@ class _FolderScreenState extends State<FolderScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Cannot download while offline'),
-          backgroundColor: Colors.orange,
+          backgroundColor: AppColors.warning,
         ),
       );
       return;
@@ -724,8 +727,8 @@ class _FolderScreenState extends State<FolderScreen> {
                         'Download requires approval'),
             ),
             backgroundColor: (result['requestCreated'] == true)
-                ? Colors.orange
-                : Colors.red,
+                ? AppColors.warning
+                : AppColors.error,
           ),
         );
         return;
@@ -742,7 +745,7 @@ class _FolderScreenState extends State<FolderScreen> {
             }
             return err;
           }()),
-          backgroundColor: Colors.red,
+          backgroundColor: AppColors.error,
         ),
       );
     } catch (e) {
@@ -750,7 +753,7 @@ class _FolderScreenState extends State<FolderScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Download failed: $e'),
-          backgroundColor: Colors.red,
+          backgroundColor: AppColors.error,
         ),
       );
     }
@@ -780,7 +783,7 @@ class _FolderScreenState extends State<FolderScreen> {
                   width: r.p(40),
                   height: r.p(4),
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
+                    color: AppColors.border,
                     borderRadius: BorderRadius.circular(r.p(2)),
                   ),
                 ),
@@ -797,7 +800,7 @@ class _FolderScreenState extends State<FolderScreen> {
                   },
                 ),
                 ListTile(
-                  leading: const Icon(Icons.build, color: Colors.blueGrey),
+                  leading: const Icon(Icons.build, color: AppColors.textSecondary),
                   title: const Text('Tools'),
                   onTap: () {
                     Navigator.pop(context);
@@ -805,7 +808,7 @@ class _FolderScreenState extends State<FolderScreen> {
                   },
                 ),
                 ListTile(
-                  leading: const Icon(Icons.share, color: Colors.blue),
+                  leading: const Icon(Icons.share, color: AppColors.info),
                   title: const Text('Share'),
                   onTap: () {
                     Navigator.pop(context);
@@ -813,7 +816,7 @@ class _FolderScreenState extends State<FolderScreen> {
                   },
                 ),
                 ListTile(
-                  leading: const Icon(Icons.download, color: Colors.green),
+                  leading: const Icon(Icons.download, color: AppColors.success),
                   title: Text(
                     document.allowDownload ? 'Download' : 'Request Download',
                   ),
@@ -842,7 +845,7 @@ class _FolderScreenState extends State<FolderScreen> {
                         : Icons.publish,
                     color: document.isPublishedToLibrary
                         ? Colors.orange
-                        : Colors.indigo,
+                        : AppColors.primary,
                   ),
                   title: Text(
                     document.isPublishedToLibrary
@@ -875,14 +878,14 @@ class _FolderScreenState extends State<FolderScreen> {
                                     'Action failed',
                         ),
                         backgroundColor: result['success'] == true
-                            ? Colors.green
-                            : Colors.red,
+                            ? AppColors.success
+                            : AppColors.error,
                       ),
                     );
                   },
                 ),
                 ListTile(
-                  leading: const Icon(Icons.delete, color: Colors.red),
+                  leading: const Icon(Icons.delete, color: AppColors.error),
                   title: const Text('Delete'),
                   onTap: () {
                     Navigator.pop(context);
@@ -903,7 +906,7 @@ class _FolderScreenState extends State<FolderScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Cannot share while offline'),
-          backgroundColor: Colors.orange,
+          backgroundColor: AppColors.warning,
         ),
       );
       return;
@@ -934,7 +937,7 @@ class _FolderScreenState extends State<FolderScreen> {
               Navigator.pop(context);
               await _deleteFolder(folder);
             },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
             child: const Text('Delete'),
           ),
         ],
@@ -948,7 +951,7 @@ class _FolderScreenState extends State<FolderScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Cannot delete while offline'),
-            backgroundColor: Colors.orange,
+            backgroundColor: AppColors.warning,
           ),
         );
         return;
@@ -964,7 +967,7 @@ class _FolderScreenState extends State<FolderScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Folder deleted'),
-            backgroundColor: Colors.red,
+            backgroundColor: AppColors.error,
           ),
         );
       } else {
@@ -975,7 +978,7 @@ class _FolderScreenState extends State<FolderScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Delete failed: $e'),
-          backgroundColor: Colors.red,
+          backgroundColor: AppColors.error,
         ),
       );
     }
@@ -999,7 +1002,7 @@ class _FolderScreenState extends State<FolderScreen> {
       Colors.orange,
       Colors.purple,
       Colors.teal,
-      Colors.indigo,
+      AppColors.primary,
     ];
     final index = name.hashCode % colors.length;
     return colors[index];
@@ -1045,7 +1048,7 @@ class _FolderScreenState extends State<FolderScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Cannot share while offline'),
-          backgroundColor: Colors.orange,
+          backgroundColor: AppColors.warning,
         ),
       );
       return;
@@ -1139,7 +1142,7 @@ class _FolderScreenState extends State<FolderScreen> {
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      color: Colors.indigo,
+                      color: AppColors.primary,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -1150,7 +1153,7 @@ class _FolderScreenState extends State<FolderScreen> {
                   const SizedBox(height: 4),
                   Text(
                     'Share: ${document.name}',
-                    style: const TextStyle(fontSize: 14, color: Colors.blue),
+                    style: const TextStyle(fontSize: 14, color: AppColors.info),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -1162,7 +1165,7 @@ class _FolderScreenState extends State<FolderScreen> {
                         '✓ Document already shared with selected users',
                         style: TextStyle(
                           fontSize: 12,
-                          color: Colors.green.shade700,
+                          color: AppColors.success,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -1209,7 +1212,7 @@ class _FolderScreenState extends State<FolderScreen> {
                       Text(
                         errorMessage!,
                         style: TextStyle(
-                          color: Colors.red.shade600,
+                          color: AppColors.error,
                           fontSize: 12,
                         ),
                       ),
@@ -1235,14 +1238,14 @@ class _FolderScreenState extends State<FolderScreen> {
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.blue.shade50,
+                              color: AppColors.info,
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
                               '$selectedCount selected',
                               style: TextStyle(
                                 fontSize: 12,
-                                color: Colors.blue.shade700,
+                                color: AppColors.info,
                               ),
                             ),
                           ),
@@ -1327,7 +1330,7 @@ class _FolderScreenState extends State<FolderScreen> {
                               content: Text(
                                 'Sharing "${document.name}" with ${selectedUsers.length} user${selectedUsers.length > 1 ? 's' : ''}...',
                               ),
-                              backgroundColor: Colors.blue,
+                              // backgroundcolor: AppColors.info,
                             ),
                           );
 
@@ -1368,7 +1371,7 @@ class _FolderScreenState extends State<FolderScreen> {
                                   result['message'] ??
                                       'Document shared successfully!',
                                 ),
-                                backgroundColor: Colors.green,
+                                backgroundColor: AppColors.success,
                                 duration: const Duration(seconds: 2),
                               ),
                             );
@@ -1388,14 +1391,14 @@ class _FolderScreenState extends State<FolderScreen> {
                                       result['error'] ??
                                       'Failed to share document',
                                 ),
-                                backgroundColor: Colors.red,
+                                backgroundColor: AppColors.error,
                                 duration: const Duration(seconds: 2),
                               ),
                             );
                           }
                         },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
+                    backgroundColor: AppColors.info,
                     foregroundColor: Colors.white,
                   ),
                   child: isSharing
@@ -1462,7 +1465,7 @@ class _FolderScreenState extends State<FolderScreen> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(8),
             side: BorderSide(
-              color: user.isSelected ? Colors.blue : Colors.grey.shade200,
+              color: user.isSelected ? Colors.blue : AppColors.borderLight,
               width: user.isSelected ? 1.5 : 1,
             ),
           ),
@@ -1501,12 +1504,12 @@ class _FolderScreenState extends State<FolderScreen> {
                 if (user.employeeId != null)
                   Text(
                     user.employeeId!,
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                    style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
                   ),
                 if (user.department != null)
                   Text(
                     user.department!,
-                    style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                    style: TextStyle(fontSize: 11,),
                   ),
               ],
             ),
@@ -1567,11 +1570,11 @@ class _FolderScreenState extends State<FolderScreen> {
           value: AppViewMode.list,
           child: Row(
             children: [
-              Icon(Icons.list, color: Colors.indigo),
+              Icon(Icons.list, color: AppColors.primary),
               SizedBox(width: 8),
               Text('List View'),
               if (_currentViewMode == AppViewMode.list)
-                Icon(Icons.check, color: Colors.green, size: 16),
+                Icon(Icons.check, color: AppColors.success, size: 16),
             ],
           ),
         ),
@@ -1579,11 +1582,11 @@ class _FolderScreenState extends State<FolderScreen> {
           value: AppViewMode.grid2x2,
           child: Row(
             children: [
-              Icon(Icons.grid_on, color: Colors.indigo),
+              Icon(Icons.grid_on, color: AppColors.primary),
               SizedBox(width: 8),
               Text('Grid (2x2)'),
               if (_currentViewMode == AppViewMode.grid2x2)
-                Icon(Icons.check, color: Colors.green, size: 16),
+                Icon(Icons.check, color: AppColors.success, size: 16),
             ],
           ),
         ),
@@ -1591,11 +1594,11 @@ class _FolderScreenState extends State<FolderScreen> {
           value: AppViewMode.grid3x3,
           child: Row(
             children: [
-              Icon(Icons.view_module, color: Colors.indigo),
+              Icon(Icons.view_module, color: AppColors.primary),
               SizedBox(width: 8),
               Text('Grid (3x3)'),
               if (_currentViewMode == AppViewMode.grid3x3)
-                Icon(Icons.check, color: Colors.green, size: 16),
+                Icon(Icons.check, color: AppColors.success, size: 16),
             ],
           ),
         ),
@@ -1603,11 +1606,11 @@ class _FolderScreenState extends State<FolderScreen> {
           value: AppViewMode.compact,
           child: Row(
             children: [
-              Icon(Icons.view_headline, color: Colors.indigo),
+              Icon(Icons.view_headline, color: AppColors.primary),
               SizedBox(width: 8),
               Text('Compact View'),
               if (_currentViewMode == AppViewMode.compact)
-                Icon(Icons.check, color: Colors.green, size: 16),
+                Icon(Icons.check, color: AppColors.success, size: 16),
             ],
           ),
         ),
@@ -1615,11 +1618,11 @@ class _FolderScreenState extends State<FolderScreen> {
           value: AppViewMode.detailed,
           child: Row(
             children: [
-              Icon(Icons.table_rows, color: Colors.indigo),
+              Icon(Icons.table_rows, color: AppColors.primary),
               SizedBox(width: 8),
               Text('Detailed View'),
               if (_currentViewMode == AppViewMode.detailed)
-                Icon(Icons.check, color: Colors.green, size: 16),
+                Icon(Icons.check, color: AppColors.success, size: 16),
             ],
           ),
         ),
@@ -1687,7 +1690,7 @@ class _FolderScreenState extends State<FolderScreen> {
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(r.p(12)),
                         border: Border.all(
-                          color: Colors.grey.shade200,
+                          color: AppColors.borderLight,
                           width: 1,
                         ),
                       ),
@@ -1696,12 +1699,12 @@ class _FolderScreenState extends State<FolderScreen> {
                           Container(
                             padding: EdgeInsets.all(r.p(10)),
                             decoration: BoxDecoration(
-                              color: Colors.amber.shade50,
+                              color: AppColors.warningLight,
                               borderRadius: BorderRadius.circular(r.p(10)),
                             ),
                             child: Icon(
                               Icons.folder,
-                              color: Colors.amber.shade700,
+                              color: AppColors.warning,
                               size: r.sp(28),
                             ),
                           ),
@@ -1725,7 +1728,7 @@ class _FolderScreenState extends State<FolderScreen> {
                                   children: [
                                     Icon(
                                       Icons.download_rounded,
-                                      color: Colors.green,
+                                      color: AppColors.success,
                                     ),
                                     SizedBox(width: 8),
                                     Text('Download'),
@@ -1738,7 +1741,7 @@ class _FolderScreenState extends State<FolderScreen> {
                                   children: [
                                     Icon(
                                       Icons.archive_rounded,
-                                      color: Colors.green,
+                                      color: AppColors.success,
                                     ),
                                     SizedBox(width: 8),
                                     Text('Download as ZIP'),
@@ -1749,7 +1752,7 @@ class _FolderScreenState extends State<FolderScreen> {
                                 value: 'share',
                                 child: Row(
                                   children: [
-                                    Icon(Icons.share, color: Colors.blue),
+                                    Icon(Icons.share, color: AppColors.info),
                                     SizedBox(width: 8),
                                     Text('Share'),
                                   ],
@@ -1759,7 +1762,7 @@ class _FolderScreenState extends State<FolderScreen> {
                                 value: 'delete',
                                 child: Row(
                                   children: [
-                                    Icon(Icons.delete, color: Colors.red),
+                                    Icon(Icons.delete, color: AppColors.error),
                                     SizedBox(width: 8),
                                     Text('Delete'),
                                   ],
@@ -1810,7 +1813,7 @@ class _FolderScreenState extends State<FolderScreen> {
                       value: 'download',
                       child: Row(
                         children: [
-                          Icon(Icons.download_rounded, color: Colors.green),
+                          Icon(Icons.download_rounded, color: AppColors.success),
                           SizedBox(width: 8),
                           Text('Download'),
                         ],
@@ -1820,7 +1823,7 @@ class _FolderScreenState extends State<FolderScreen> {
                       value: 'download_zip',
                       child: Row(
                         children: [
-                          Icon(Icons.archive_rounded, color: Colors.green),
+                          Icon(Icons.archive_rounded, color: AppColors.success),
                           SizedBox(width: 8),
                           Text('ZIP'),
                         ],
@@ -1830,7 +1833,7 @@ class _FolderScreenState extends State<FolderScreen> {
                       value: 'share',
                       child: Row(
                         children: [
-                          Icon(Icons.share, color: Colors.blue),
+                          Icon(Icons.share, color: AppColors.info),
                           SizedBox(width: 8),
                           Text('Share'),
                         ],
@@ -1840,7 +1843,7 @@ class _FolderScreenState extends State<FolderScreen> {
                       value: 'delete',
                       child: Row(
                         children: [
-                          Icon(Icons.delete, color: Colors.red),
+                          Icon(Icons.delete, color: AppColors.error),
                           SizedBox(width: 8),
                           Text('Delete'),
                         ],
@@ -1934,7 +1937,7 @@ class _FolderScreenState extends State<FolderScreen> {
                               children: [
                                 Icon(
                                   Icons.download_rounded,
-                                  color: Colors.green,
+                                  color: AppColors.success,
                                 ),
                                 SizedBox(width: 8),
                                 Text('Download'),
@@ -1947,7 +1950,7 @@ class _FolderScreenState extends State<FolderScreen> {
                               children: [
                                 Icon(
                                   Icons.archive_rounded,
-                                  color: Colors.green,
+                                  color: AppColors.success,
                                 ),
                                 SizedBox(width: 8),
                                 Text('ZIP'),
@@ -1958,7 +1961,7 @@ class _FolderScreenState extends State<FolderScreen> {
                             value: 'share',
                             child: Row(
                               children: [
-                                Icon(Icons.share, color: Colors.blue),
+                                Icon(Icons.share, color: AppColors.info),
                                 SizedBox(width: 8),
                                 Text('Share'),
                               ],
@@ -1968,7 +1971,7 @@ class _FolderScreenState extends State<FolderScreen> {
                             value: 'delete',
                             child: Row(
                               children: [
-                                Icon(Icons.delete, color: Colors.red),
+                                Icon(Icons.delete, color: AppColors.error),
                                 SizedBox(width: 8),
                                 Text('Delete'),
                               ],
@@ -2042,27 +2045,27 @@ class _FolderScreenState extends State<FolderScreen> {
   Color _getFileColor(String type) {
     switch (type.toLowerCase()) {
       case 'pdf':
-        return Colors.red;
+        return AppColors.filePdf;
       case 'doc':
       case 'docx':
-        return Colors.blue;
+        return AppColors.fileWord;
       case 'xls':
       case 'xlsx':
-        return Colors.green;
+        return AppColors.fileExcel;
       case 'ppt':
       case 'pptx':
-        return Colors.orange;
+        return AppColors.filePpt;
       case 'txt':
-        return Colors.grey;
+        return AppColors.fileText;
       case 'image':
       case 'jpg':
       case 'jpeg':
       case 'png':
         return Colors.purple;
       case 'csv':
-        return Colors.green.shade700;
+        return AppColors.fileExcel;
       default:
-        return Colors.indigo;
+        return AppColors.primary;
     }
   }
 
@@ -2172,7 +2175,7 @@ class _FolderScreenState extends State<FolderScreen> {
                         doc.type.toUpperCase(),
                         style: TextStyle(
                           fontSize: r.sp(11),
-                          color: Colors.grey.shade700,
+                          color: AppColors.textSecondary,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -2361,19 +2364,19 @@ class _FolderScreenState extends State<FolderScreen> {
       'DOC': Icons.description,
     };
     final docColors = {
-      'PDF': Colors.red,
-      'DOCX': Colors.blue,
-      'XLSX': Colors.green,
-      'PPTX': Colors.orange,
-      'TXT': Colors.grey,
-      'PPT': Colors.orange,
-      'XLS': Colors.green,
-      'DOC': Colors.blue,
+      'PDF': AppColors.filePdf,
+      'DOCX': AppColors.fileWord,
+      'XLSX': AppColors.fileExcel,
+      'PPTX': AppColors.filePpt,
+      'TXT': AppColors.fileText,
+      'PPT': AppColors.filePpt,
+      'XLS': AppColors.fileExcel,
+      'DOC': AppColors.fileWord,
     };
 
     String fileType = document.type.toUpperCase();
     IconData icon = docIcons[fileType] ?? Icons.insert_drive_file;
-    Color color = docColors[fileType] ?? Colors.indigo;
+    Color color = docColors[fileType] ?? AppColors.primary;
 
     // Format the date to DD MM YYYY
     String formattedDate = _formatToDDMMYYYY(document.uploadDate);
@@ -2402,6 +2405,7 @@ class _FolderScreenState extends State<FolderScreen> {
               // Top row with icon, document info, and expand/collapse button
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Container(
                     padding: EdgeInsets.all(r.p(12)),
@@ -2419,18 +2423,45 @@ class _FolderScreenState extends State<FolderScreen> {
                         Row(
                           children: [
                             Expanded(
-                              child: Text(
-                                document.name,
-                                style: TextStyle(
-                                  fontSize: r.sp(16),
-                                  fontWeight: FontWeight.bold,
-                                ),
-                                maxLines: isExpanded ? 2 : 1,
-                                overflow: TextOverflow.ellipsis,
+                              child: Column(
+                                children: [
+                                  Text(
+                                    document.name,
+                                    style: TextStyle(
+                                      fontSize: r.sp(16),
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    maxLines: isExpanded ? 2 : 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                
+                                        Text(
+                          'Type: ${document.type} • $formattedDate',
+                          style: TextStyle(
+                            fontSize: r.sp(11),
+                            color: AppColors.textTertiary,
+                          ),
+                        ),
+                                ],
                               ),
                             ),
                             // EXPAND/COLLAPSE BUTTON (same as HomePage)
-                            GestureDetector(
+                       
+                            // Vertical More Options Button (Three Dots)
+                            IconButton(
+                              onPressed: () => _toggleFavorite(document),
+                              icon: Icon(
+                                _isFavorite(document.id)
+                                    ? Icons.favorite
+                                    : Icons.favorite_border,
+                                color: _isFavorite(document.id)
+                                    ? AppColors.error
+                                    : Colors.white,
+                              ),
+                              tooltip: 'Favorite',
+                            ),
+
+                                 GestureDetector(
                               onTap: () {
                                 setState(() {
                                   // Toggle only this specific document using its ID
@@ -2444,7 +2475,7 @@ class _FolderScreenState extends State<FolderScreen> {
                                 decoration: BoxDecoration(
                                   color: isExpanded
                                       ? color.withAlpha(20)
-                                      : Colors.grey.shade100,
+                                      : AppColors.surfaceVariant,
                                   shape: BoxShape.circle,
                                   border: Border.all(
                                     color: isExpanded
@@ -2462,26 +2493,13 @@ class _FolderScreenState extends State<FolderScreen> {
                                       size: r.sp(22),
                                       color: isExpanded
                                           ? color
-                                          : Colors.grey.shade700,
+                                          : AppColors.textSecondary,
                                     ),
                                   ),
                                 ),
                               ),
                             ),
                             SizedBox(width: r.p(8)),
-                            // Vertical More Options Button (Three Dots)
-                            IconButton(
-                              onPressed: () => _toggleFavorite(document),
-                              icon: Icon(
-                                _isFavorite(document.id)
-                                    ? Icons.favorite
-                                    : Icons.favorite_border,
-                                color: _isFavorite(document.id)
-                                    ? Colors.red
-                                    : Colors.white,
-                              ),
-                              tooltip: 'Favorite',
-                            ),
                             IconButton(
                               onPressed: () =>
                                   _showDocumentActions(document, index),
@@ -2489,28 +2507,21 @@ class _FolderScreenState extends State<FolderScreen> {
                                 width: r.p(36),
                                 height: r.p(36),
                                 decoration: BoxDecoration(
-                                  color: Colors.grey.shade100,
+                                  color: AppColors.surfaceVariant,
                                   shape: BoxShape.circle,
                                 ),
                                 child: Center(
                                   child: Icon(
                                     Icons.more_vert,
                                     size: r.sp(20),
-                                    color: Colors.grey.shade700,
+                                    color: AppColors.textSecondary,
                                   ),
                                 ),
                               ),
                             ),
                           ],
                         ),
-                        SizedBox(height: r.p(4)),
-                        Text(
-                          'Type: ${document.type} • $formattedDate',
-                          style: TextStyle(
-                            fontSize: r.sp(11),
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
+                  
                       ],
                     ),
                   ),
@@ -2536,27 +2547,27 @@ class _FolderScreenState extends State<FolderScreen> {
                           _buildDetailRow(
                             'Keyword',
                             document.keyword,
-                            Icons.label,
+                            Icons.label_important_outline,
                           ),
                           _buildDetailRow(
                             'Owner',
                             document.owner,
-                            Icons.person,
+                            Icons.person_2_outlined,
                           ),
                           _buildDetailRow(
                             'Folder',
                             document.folder,
-                            Icons.folder,
+                            Icons.folder_copy_outlined,
                           ),
                           _buildDetailRow(
                             'Classification',
                             document.classification,
-                            Icons.security,
+                            Icons.security_outlined,
                           ),
                           _buildDetailRow(
                             'Sharing',
                             document.sharingType,
-                            Icons.share,
+                            Icons.share_location_outlined,
                           ),
                           if (document.details.isNotEmpty)
                             _buildDetailRow(
@@ -2607,8 +2618,8 @@ class _FolderScreenState extends State<FolderScreen> {
                                 style: TextStyle(fontSize: r.sp(12)),
                               ),
                               style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.blue,
-                                side: const BorderSide(color: Colors.blue),
+                                foregroundColor: AppColors.info,
+                                side: const BorderSide(color: AppColors.info),
                                 padding: EdgeInsets.symmetric(vertical: r.p(8)),
                               ),
                             ),
@@ -2628,8 +2639,8 @@ class _FolderScreenState extends State<FolderScreen> {
                                 style: TextStyle(fontSize: r.sp(12)),
                               ),
                               style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.green,
-                                side: const BorderSide(color: Colors.green),
+                                foregroundColor: AppColors.success,
+                                side: const BorderSide(color: AppColors.success),
                                 padding: EdgeInsets.symmetric(vertical: r.p(8)),
                               ),
                             ),
@@ -2665,16 +2676,16 @@ class _FolderScreenState extends State<FolderScreen> {
   // Helper method for document colors
   Color _getDocumentColor(String fileType) {
     final docColors = {
-      'PDF': Colors.red,
-      'DOCX': Colors.blue,
-      'XLSX': Colors.green,
-      'PPTX': Colors.orange,
-      'TXT': Colors.grey,
-      'PPT': Colors.orange,
-      'XLS': Colors.green,
-      'DOC': Colors.blue,
+      'PDF': AppColors.filePdf,
+      'DOCX': AppColors.fileWord,
+      'XLSX': AppColors.fileExcel,
+      'PPTX': AppColors.filePpt,
+      'TXT': AppColors.fileText,
+      'PPT': AppColors.filePpt,
+      'XLS': AppColors.fileExcel,
+      'DOC': AppColors.fileWord,
     };
-    return docColors[fileType.toUpperCase()] ?? Colors.indigo;
+    return docColors[fileType.toUpperCase()] ?? AppColors.primary;
   }
 
   // Helper method for detail rows
@@ -2685,19 +2696,20 @@ class _FolderScreenState extends State<FolderScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: r.sp(16), color: Colors.indigo),
+          Icon(icon, size: r.sp(16), color: AppColors.textTertiary),
           SizedBox(width: r.p(8)),
-          Flexible(
+          SizedBox(
+            width: r.p(90),
             child: Text(
               '$label:',
-              style: TextStyle(fontWeight: FontWeight.w600, fontSize: r.sp(13)),
+              style: w400_14Poppins(color: AppColors.textTertiary),
             ),
           ),
           SizedBox(width: r.p(8)),
           Expanded(
             child: Text(
               value,
-              style: TextStyle(fontSize: r.sp(13), color: Colors.grey.shade700),
+              style: w500_14Poppins(),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
@@ -2731,7 +2743,7 @@ class _FolderScreenState extends State<FolderScreen> {
             Icon(
               Icons.folder_open,
               size: r.sp(80),
-              color: Colors.grey.shade400,
+              color: AppColors.textDisabled,
             ),
             SizedBox(height: r.p(20)),
             Text(
@@ -2745,7 +2757,7 @@ class _FolderScreenState extends State<FolderScreen> {
             SizedBox(height: r.p(10)),
             Text(
               'Upload documents or check subfolders',
-              style: TextStyle(fontSize: r.sp(14), color: Colors.grey.shade600),
+              style: TextStyle(fontSize: r.sp(14), color: AppColors.textTertiary),
               textAlign: TextAlign.center,
             ),
           ],

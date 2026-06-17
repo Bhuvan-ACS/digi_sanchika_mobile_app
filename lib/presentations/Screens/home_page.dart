@@ -39,6 +39,7 @@ import 'package:digi_sanchika/presentations/Screens/all_folders_screen.dart';
 import 'package:digi_sanchika/utils/responsive_helper.dart';
 import 'package:digi_sanchika/utils/design_tokens.dart';
 import 'package:digi_sanchika/widgets/dismiss_keyboard.dart';
+import 'package:digi_sanchika/widgets/folder_member_avatar_stack.dart';
 
 class HomePage extends StatefulWidget {
   final String? userName;
@@ -62,6 +63,7 @@ class _HomePageState extends State<HomePage>
   List<Document> allDocuments = [];
   List<Folder> folders = [];
   bool _showRecent = false;
+  String _docTypeFilter = 'All'; // 'All', 'PDF', 'Docs', 'Sheets'
   bool _showFolderDropdown = false;
   bool _showDocumentsDropdown = true;
   bool _isLoading = true;
@@ -2054,9 +2056,8 @@ class _HomePageState extends State<HomePage>
               ),
           ],
         ),
-        SizedBox(height: r.p(8)),
        SizedBox(
-  height: 300.h,
+  height: 280.h,
   child: GridView.builder(
     shrinkWrap: true,
     physics: const NeverScrollableScrollPhysics(),
@@ -2065,15 +2066,52 @@ class _HomePageState extends State<HomePage>
       crossAxisCount: 2,
       crossAxisSpacing: 12.w,
       mainAxisSpacing: 12.h,
-      childAspectRatio: 1.1,
+      childAspectRatio: 1.08,
     ),
     itemBuilder: (context, index) {
       final folder = displayFolders[index];
 
+      // ── Per-index folder icon colour pairs ──────────────────────────
+      const folderColorPairs = [
+        [Color(0xFFEDE7F6), Color.fromARGB(255, 190, 169, 248)], // purple
+        [Color(0xFFE0F7FA), Color.fromARGB(255, 108, 179, 172)], // teal
+        [Color(0xFFFFF3E0), Color.fromARGB(255, 240, 186, 121)], // orange
+        [Color(0xFFE8F5E9), Color.fromARGB(255, 136, 221, 140)], // green
+        [Color(0xFFE3F2FD), Color.fromARGB(255, 132, 171, 204)], // blue
+        [Color(0xFFFCE4EC), Color.fromARGB(255, 226, 140, 169)], // pink
+      ];
+      final iconBg    = folderColorPairs[index % folderColorPairs.length][0];
+      final iconColor = folderColorPairs[index % folderColorPairs.length][1];
+
+      // ── Document count & size ────────────────────────────────────────
+      final folderDocs = allDocuments
+          .where((d) => d.folderId == folder.id)
+          .toList();
+      final fileCount = folderDocs.length;
+
+      double totalBytes = 0;
+      for (final d in folderDocs) {
+        final raw = d.size.replaceAll(RegExp(r'[^0-9.]'), '').trim();
+        totalBytes += double.tryParse(raw) ?? 0;
+      }
+      final sizeMB = totalBytes / (1024 * 1024);
+      final sizeLabel = sizeMB >= 1
+          ? '${sizeMB.toStringAsFixed(0)} MB'
+          : '${(totalBytes / 1024).toStringAsFixed(0)} KB';
+
+      // ── Time ago ─────────────────────────────────────────────────────
+      String timeAgo(DateTime dt) {
+        final diff = DateTime.now().difference(dt);
+        if (diff.inDays >= 7)  return '${(diff.inDays / 7).floor()}w ago';
+        if (diff.inDays >= 1)  return '${diff.inDays}d ago';
+        if (diff.inHours >= 1) return '${diff.inHours}h ago';
+        return 'just now';
+      }
+
       return Material(
+        elevation: 0.5,
         color: Colors.white,
         borderRadius: BorderRadius.circular(r.p(12)),
-        elevation: 1,
         child: InkWell(
           borderRadius: BorderRadius.circular(r.p(12)),
           onTap: () {
@@ -2088,96 +2126,110 @@ class _HomePageState extends State<HomePage>
               ),
             );
           },
-          onLongPress: () =>
-              _showDeleteFolderConfirmation(context, index),
+          onLongPress: () => _showDeleteFolderConfirmation(context, index),
           child: Container(
-            padding: EdgeInsets.all(r.p(14)),
+            padding: EdgeInsets.symmetric(vertical: r.p(6),horizontal: r.p(12)),
             decoration: BoxDecoration(
+              color: Colors.white,
               borderRadius: BorderRadius.circular(r.p(12)),
-              border: Border.all(
-                color: Colors.grey.shade200,
-              ),
+              border: Border.all(color: Colors.grey.shade200),
             ),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                // Top row: coloured folder icon + ⋮ menu
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
+                    Container(
+                      padding: EdgeInsets.all(r.p(8)),
+                      decoration: BoxDecoration(
+                        color: iconBg,
+                        borderRadius: BorderRadius.circular(r.p(10)),
+                      ),
+                      child: Icon(
+                        Icons.folder_rounded,
+                        color: iconColor,
+                        size: r.sp(24),
+                      ),
+                    ),
+                    PopupMenuButton<String>(
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(value: 'download',     child: Text('Download')),
+                        PopupMenuItem(value: 'download_zip', child: Text('Download as ZIP')),
+                        PopupMenuItem(value: 'share',        child: Text('Share Folder')),
+                        PopupMenuItem(value: 'delete',       child: Text('Delete Folder')),
+                      ],
+                      onSelected: (value) {
+                        if (value == 'download') {
+                          _downloadFolderFiles(folder);
+                        } else if (value == 'download_zip') {
+                          _downloadFolderZip(folder);
+                        } else if (value == 'share') {
+                          _showFolderShareDialog(folder);
+                        } else if (value == 'delete') {
+                          _showDeleteFolderConfirmation(context, index);
+                        }
+                      },
+                      icon: Icon(Icons.more_vert,
+                          size: r.sp(18), color: Colors.grey.shade500),
+                    ),
+                  ],
+                ),
+
+                SizedBox(height: r.p(8)),
+
+                // Folder name
+                Text(
+                  folder.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: r.sp(14),
+                    color: Colors.black87,
+                  ),
+                ),
+
+                SizedBox(height: r.p(3)),
+
+                // "N files · X MB"
+                Text(
+                  '$fileCount ${fileCount == 1 ? 'file' : 'files'} · $sizeLabel',
+                  style: TextStyle(
+                    fontSize: r.sp(12),
+                    color: Colors.grey.shade500,
+                  ),
+                ),
+Divider(height: r.p(12)),
+
+                // Bottom row: owner avatars + time ago
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    FolderMemberAvatarStack(
+                      folderId: folder.id,
+                      fallbackInitial: _getUserInitial().substring(0, 1),
+                    ),
+
+                    const Spacer(),
+
                     Row(
-                      mainAxisAlignment:
-                          MainAxisAlignment.spaceBetween,
                       children: [
-                        Container(
-                          padding: EdgeInsets.all(r.p(9)),
-                          decoration: BoxDecoration(
-                            color: Colors.amber.shade50,
-                            borderRadius:
-                                BorderRadius.circular(r.p(10)),
-                          ),
-                          child: Icon(
-                            Icons.folder,
-                            color: Colors.amber.shade700,
-                            size: r.sp(26),
-                          ),
-                        ),
-                        PopupMenuButton(
-                          itemBuilder: (context) => [
-                            const PopupMenuItem(
-                              value: 'download',
-                              child: Text('Download'),
-                            ),
-                            const PopupMenuItem(
-                              value: 'download_zip',
-                              child: Text('Download as ZIP'),
-                            ),
-                            const PopupMenuItem(
-                              value: 'share',
-                              child: Text('Share Folder'),
-                            ),
-                            const PopupMenuItem(
-                              value: 'delete',
-                              child: Text('Delete Folder'),
-                            ),
-                          ],
-                          onSelected: (value) {
-                            if (value == 'download') {
-                              _downloadFolderFiles(folder);
-                            } else if (value ==
-                                'download_zip') {
-                              _downloadFolderZip(folder);
-                            } else if (value == 'share') {
-                              _showFolderShareDialog(folder);
-                            } else if (value == 'delete') {
-                              _showDeleteFolderConfirmation(
-                                  context, index);
-                            }
-                          },
-                          icon: Icon(
-                            Icons.more_vert,
-                            size: r.sp(18),
-                            color: Colors.grey.shade600,
+                        Icon(Icons.access_time_rounded,
+                            size: r.sp(11), color: Colors.grey.shade400),
+                        SizedBox(width: r.p(2)),
+                        Text(
+                          timeAgo(folder.createdAt),
+                          style: TextStyle(
+                            fontSize: r.sp(11),
+                            color: Colors.grey.shade400,
                           ),
                         ),
                       ],
                     ),
-                    SizedBox(height: r.p(12)),
-                    Text(
-                      folder.name,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: r.sp(15),
-                      ),
-                    ),
-                    SizedBox(height: r.p(6)),
-                    Text(
-                      '${folder.documents.length} files',
-                      style: w400_14Poppins(),
-                    ),
                   ],
                 ),
-                Divider(height: r.p(12), color: Colors.grey.shade300),
               ],
             ),
           ),
@@ -2292,6 +2344,124 @@ class _HomePageState extends State<HomePage>
     );
   }
 
+  Widget _buildTypeFilterChips() {
+    final r = context.r;
+
+    bool isHomeDoc(Document d) {
+      final folderId = d.folderId?.trim();
+      if (folderId != null && folderId.isNotEmpty) return false;
+      final folderName = d.folder.trim().toLowerCase();
+      return folderName.isEmpty || folderName == 'home';
+    }
+
+    final allHomeDocs = allDocuments.where(isHomeDoc).toList();
+    final filters = [
+      {'label': 'All', 'count': allHomeDocs.length},
+      {
+        'label': 'PDF',
+        'count': allHomeDocs
+            .where((d) => d.type.toLowerCase().replaceAll('.', '') == 'pdf')
+            .length,
+      },
+      {
+        'label': 'Docs',
+        'count': allHomeDocs.where((d) {
+          final ext = d.type.toLowerCase().replaceAll('.', '');
+          return ext == 'doc' || ext == 'docx' || ext == 'txt' || ext == 'odt';
+        }).length,
+      },
+      {
+        'label': 'Sheets',
+        'count': allHomeDocs.where((d) {
+          final ext = d.type.toLowerCase().replaceAll('.', '');
+          return ext == 'xls' || ext == 'xlsx' || ext == 'csv' || ext == 'ods';
+        }).length,
+      },
+    ];
+
+    return Container(
+      // color: Colors.white,
+      padding: EdgeInsets.symmetric(
+        horizontal: r.horizontalPadding,
+        vertical: r.p(5),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: filters.map((f) {
+            final label = f['label'] as String;
+            final count = f['count'] as int;
+            final isSelected = _docTypeFilter == label;
+            return Padding(
+              padding: EdgeInsets.only(right: r.p(8)),
+              child: GestureDetector(
+                onTap: () => setState(() => _docTypeFilter = label),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: r.p(14),
+                    vertical: r.p(7),
+                  ),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? const Color(0xFF2B41BD)
+                        : Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(r.p(8)),
+                    border: Border.all(
+                      color: isSelected
+                          ? const Color(0xFF2B41BD)
+                          : Colors.grey.shade300,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: r.sp(13),
+                          fontWeight: isSelected
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                          color: isSelected
+                              ? Colors.white
+                              : Colors.black87,
+                        ),
+                      ),
+                      SizedBox(width: r.p(5)),
+                      Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: r.p(6),
+                          vertical: r.p(2),
+                        ),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? Colors.white.withAlpha(50)
+                              : Colors.grey.shade300,
+                          borderRadius: BorderRadius.circular(r.p(10)),
+                        ),
+                        child: Text(
+                          '$count',
+                          style: TextStyle(
+                            fontSize: r.sp(11),
+                            fontWeight: FontWeight.w600,
+                            color: isSelected
+                                ? Colors.white
+                                : Colors.grey.shade700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
   Widget _buildDocumentsSection(List<Document> documents) {
     final r = context.r;
     Widget content;
@@ -2369,7 +2539,7 @@ class _HomePageState extends State<HomePage>
               final iconData = _getDocumentIcon(doc.type);
               final color = _getDocumentColor(doc.type);
               return Card(
-                elevation: 1,
+                
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(r.p(12)),
                 ),
@@ -2461,7 +2631,7 @@ class _HomePageState extends State<HomePage>
             );
           },
           child: KeyedSubtree(
-            key: ValueKey('${_isLoading}_${documents.isEmpty}'),
+            key: ValueKey('${_isLoading}_${documents.isEmpty}_$_docTypeFilter'),
             child: content,
           ),
         ),
@@ -2714,6 +2884,7 @@ class _HomePageState extends State<HomePage>
                   child: Column(
                     children: [
                       searchBar(),
+                      _buildTypeFilterChips(),
                       Expanded(
                         child: RefreshIndicator(
                           onRefresh: _refreshData,
@@ -2804,7 +2975,7 @@ class _HomePageState extends State<HomePage>
                     hintStyle: TextStyle(fontSize: r.sp(14)),
                     prefixIcon: _isSearching
                         ? Padding(
-                            padding: EdgeInsets.all(r.p(12)),
+                            padding: EdgeInsets.all(r.p(8)),
                             child: SizedBox(
                               width: r.sp(18),
                               height: r.sp(18),
@@ -2838,11 +3009,14 @@ class _HomePageState extends State<HomePage>
           ),
         ),
 
+        // Filter chips: All / PDF / Docs / Sheets
+        _buildTypeFilterChips(),
+
         Expanded(
           child: RefreshIndicator(
             onRefresh: _refreshData,
             child: ListView(
-              padding: EdgeInsets.all(r.p(14)),
+              padding: EdgeInsets.symmetric(horizontal: r.p(14)),
               children: [
                 if (activeQuery.isEmpty) ...[
                   _buildFoldersSection(
@@ -3565,7 +3739,7 @@ class _HomePageState extends State<HomePage>
       borderRadius: BorderRadius.circular(r.p(12)),
       child: Card(
         margin: EdgeInsets.only(bottom: r.p(14)),
-        elevation: 2,
+        elevation: 0.5,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(r.p(12)),
         ),
@@ -3582,10 +3756,13 @@ class _HomePageState extends State<HomePage>
                   Container(
                     padding: EdgeInsets.all(r.p(10)),
                     decoration: BoxDecoration(
-                      color: color.withAlpha(10),
+                      color: color.withAlpha(20),
                       borderRadius: BorderRadius.circular(r.p(8)),
                     ),
-                    child: Icon(icon, color: color, size: r.sp(28)),
+                    child:  Text(
+                          document.type,
+                          style:w600_14Poppins(color:color ),
+                        ),
                   ),
                   SizedBox(width: r.p(12)),
                   Expanded(
@@ -3611,7 +3788,7 @@ class _HomePageState extends State<HomePage>
                                       SizedBox(height: r.p(3)),
                                   
                         Text(
-                          'Type: ${document.type} • $formattedDate',
+                          '$formattedDate',
                           style:w500_14Poppins(color:Colors.grey.shade600 ),
                         ),
                         SizedBox(height: r.p(2)),
@@ -3728,7 +3905,7 @@ class _HomePageState extends State<HomePage>
                       _buildDetailRow('Path', folderPath, Icons.folder_copy_outlined),
                       _buildDetailRow(
                         'Classification',
-                        document.classification,
+                        document.classification[0].toUpperCase() + document.classification.substring(1),
                         Icons.security_outlined,
                       ),
                       _buildDetailRow(
@@ -3896,6 +4073,23 @@ class _HomePageState extends State<HomePage>
     }
 
     List<Document> allDocs = allDocuments.where(isHomeDoc).toList();
+
+    // Apply type filter
+    if (_docTypeFilter != 'All') {
+      allDocs = allDocs.where((doc) {
+        final ext = doc.type.toLowerCase().replaceAll('.', '');
+        switch (_docTypeFilter) {
+          case 'PDF':
+            return ext == 'pdf';
+          case 'Docs':
+            return ext == 'doc' || ext == 'docx' || ext == 'txt' || ext == 'odt';
+          case 'Sheets':
+            return ext == 'xls' || ext == 'xlsx' || ext == 'csv' || ext == 'ods';
+          default:
+            return true;
+        }
+      }).toList();
+    }
 
     if (_showRecent) {
       allDocs.sort((a, b) => b.uploadDate.compareTo(a.uploadDate));
