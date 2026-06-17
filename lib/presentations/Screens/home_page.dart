@@ -2211,6 +2211,7 @@ Divider(height: r.p(12)),
                       folderId: folder.id,
                       fallbackInitial: _getUserInitial().substring(0, 1),
                     ),
+                    
 
                     const Spacer(),
 
