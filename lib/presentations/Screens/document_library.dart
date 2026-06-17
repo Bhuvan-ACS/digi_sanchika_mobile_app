@@ -1186,12 +1186,14 @@ class _DocumentLibraryState extends State<DocumentLibrary>
                 onPressed: () => Navigator.pop(context),
                 child: const Text('Close'),
               ),
+              if (!document.isPublishedToLibrary)
               TextButton(
                 onPressed: () async {
                   Navigator.pop(context);
                   final result = await _libraryService.publishDocument(
                     document.id,
                   );
+                
                   if (!mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
@@ -1204,15 +1206,20 @@ class _DocumentLibraryState extends State<DocumentLibrary>
                           result['success'] == true ? Colors.green : Colors.red,
                     ),
                   );
+                    setState(() {
+                    document.isPublishedToLibrary = result['success'] == true;
+                  });
                 },
                 child: const Text('Publish'),
               ),
+              if (document.isPublishedToLibrary)
               TextButton(
                 onPressed: () async {
                   Navigator.pop(context);
                   final result = await _libraryService.unpublishDocument(
                     document.id,
                   );
+                 
                   if (!mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
@@ -1225,6 +1232,9 @@ class _DocumentLibraryState extends State<DocumentLibrary>
                           result['success'] == true ? Colors.green : Colors.red,
                     ),
                   );
+                   setState(() {
+                    document.isPublishedToLibrary = result['success'] != true;
+                  });
                 },
                 child: const Text('Unpublish'),
               ),

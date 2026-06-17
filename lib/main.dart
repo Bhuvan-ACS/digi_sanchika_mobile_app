@@ -13,6 +13,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -90,21 +91,30 @@ class DigiSanchikaApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DevicePreview(
-          enabled: false,
-          tools: const [...DevicePreview.defaultTools],  builder: (context) {
-        return MaterialApp(
-          title: 'Digi Sanchika',
-          useInheritedMediaQuery: true,
-          debugShowCheckedModeBanner: false,
-          theme: buildAppTheme(),
-          navigatorKey: rootNavigatorKey,
-          home: const _AuthGate(),
-          routes: {
-            '/login': (context) => const LoginPage(),
-            '/home': (context) => const HomePage(),
-            '/push-debug': (context) => const PushDebugScreen(),
-          },
+    return ScreenUtilInit(
+      designSize: const Size(360, 690),
+      minTextAdapt: true,
+      splitScreenMode: true,
+
+      // Use builder only if you need to use library outside ScreenUtilInit context
+      builder: (_, child) {
+        return DevicePreview(
+              enabled: false,
+              tools: const [...DevicePreview.defaultTools],  builder: (context) {
+            return MaterialApp(
+              title: 'Digi Sanchika',
+              useInheritedMediaQuery: true,
+              debugShowCheckedModeBanner: false,
+              theme: buildAppTheme(),
+              navigatorKey: rootNavigatorKey,
+              home: const _AuthGate(),
+              routes: {
+                '/login': (context) => const LoginPage(),
+                '/home': (context) => const HomePage(),
+                '/push-debug': (context) => const PushDebugScreen(),
+              },
+            );
+          }
         );
       }
     );

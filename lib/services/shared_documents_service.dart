@@ -102,8 +102,18 @@ class SharedDocumentsResponse {
             sharedViaGroupColorHex:
                 (viaGroup?['color'] ?? viaGroup?['colorHex'])?.toString(),
             sharedByName: sharedByName,
+            expiresAt:
+      share['expires_at']?.toString() ??
+      doc['expires_at']?.toString() ??
+      doc['expiresAt']?.toString(),
           );
           documents.add(document);
+          debugPrint(
+  'Document: ${document.name}, expiresAt: ${document.expiresAt}',
+);
+ debugPrint(
+  'Document: ${document.name}, keywprd: ${document.keyword}, sharedBy: ${document.sharedByName}, sharedViaGroup: ${document.sharedViaGroupName}',
+);
         } catch (e) {
           debugPrint('Error parsing document: $e');
         }

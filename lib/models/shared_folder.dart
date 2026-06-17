@@ -5,6 +5,11 @@ class SharedFolder {
   final String createdAt;
   final String expiresAt;
   final int itemCount;
+  final bool canUpload;
+  final bool canDownload;
+  final bool canEdit;
+  final String? viaGroupName;
+  final String? viaGroupColorHex;
 
   SharedFolder({
     required this.id,
@@ -13,6 +18,11 @@ class SharedFolder {
     required this.createdAt,
     required this.expiresAt,
     this.itemCount = -1,
+    this.canUpload = false,
+    this.canDownload = false,
+    this.canEdit = false,
+    this.viaGroupName,
+    this.viaGroupColorHex,
   });
 
   factory SharedFolder.fromJson(Map<String, dynamic> json) {
@@ -30,6 +40,18 @@ class SharedFolder {
         json['sharedBy'] is Map<String, dynamic>
             ? Map<String, dynamic>.from(json['sharedBy'])
             : <String, dynamic>{};
+    final effective =
+        json['effectiveAccess'] is Map<String, dynamic>
+            ? Map<String, dynamic>.from(json['effectiveAccess'])
+            : (json['effective_access'] is Map<String, dynamic>
+                ? Map<String, dynamic>.from(json['effective_access'])
+                : <String, dynamic>{});
+    final viaGroup =
+        share['viaGroup'] is Map<String, dynamic>
+            ? Map<String, dynamic>.from(share['viaGroup'])
+            : (share['via_group'] is Map<String, dynamic>
+                ? Map<String, dynamic>.from(share['via_group'])
+                : <String, dynamic>{});
 
     final count =
         json['item_count'] ??
@@ -56,6 +78,23 @@ class SharedFolder {
       itemCount: count is int
           ? count
           : int.tryParse(count?.toString() ?? '') ?? -1,
+      canUpload:
+          effective['canUpload'] == true ||
+          effective['can_upload'] == true ||
+          (share['permission']?.toString() == 'view_upload'),
+      canDownload:
+          effective['canDownload'] == true ||
+          effective['can_download'] == true ||
+          share['allow_download'] == true ||
+          share['allowDownload'] == true,
+      canEdit:
+          effective['canEdit'] == true ||
+          effective['can_edit'] == true ||
+          share['allow_edit'] == true ||
+          share['allowEdit'] == true,
+      viaGroupName: viaGroup['name']?.toString(),
+      viaGroupColorHex:
+          (viaGroup['color'] ?? viaGroup['colorHex'])?.toString(),
     );
   }
 
@@ -67,6 +106,11 @@ class SharedFolder {
       'createdAt': createdAt,
       'expiresAt': expiresAt,
       'itemCount': itemCount,
+      'canUpload': canUpload,
+      'canDownload': canDownload,
+      'canEdit': canEdit,
+      'viaGroupName': viaGroupName,
+      'viaGroupColorHex': viaGroupColorHex,
     };
   }
 

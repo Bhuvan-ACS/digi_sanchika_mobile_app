@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 const String poppins = "Poppins";
 
@@ -492,3 +493,26 @@ TextStyle w900_20Poppins({Color? color = Colors.black}) {
     fontFamily: poppins,
   );
 }
+
+
+
+SizedBox height5 = SizedBox(height: 5.h);
+SizedBox height8 = SizedBox(height: 8.h);
+SizedBox height10 = SizedBox(height: 10.h);
+SizedBox height15 = SizedBox(height: 15.h);
+SizedBox height20 = SizedBox(height: 20.h);
+SizedBox height30 = SizedBox(height: 30.h);
+SizedBox height40 = SizedBox(height: 40.h);
+SizedBox height50 = SizedBox(height: 50.h);
+SizedBox height60 = SizedBox(height: 60.h);
+SizedBox height70 = SizedBox(height: 70.h);
+SizedBox width5 = SizedBox(width: 5.w);
+SizedBox width2 = SizedBox(width: 2.w);
+SizedBox width10 = SizedBox(width: 10.w);
+SizedBox width15 = SizedBox(width: 15.w);
+SizedBox width20 = SizedBox(width: 20.w);
+SizedBox width30 = SizedBox(width: 30.w);
+SizedBox width40 = SizedBox(width: 40.w);
+SizedBox width50 = SizedBox(width: 50.w);
+SizedBox width55 = SizedBox(width: 55.w);
+SizedBox width60 = SizedBox(width: 60.w);

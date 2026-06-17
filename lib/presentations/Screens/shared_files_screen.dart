@@ -5,6 +5,7 @@
 import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
+import 'package:digi_sanchika/utils/app_fonts.dart';
 import 'package:flutter/material.dart';
 import 'package:digi_sanchika/utils/responsive_helper.dart';
 import 'package:digi_sanchika/models/document.dart';
@@ -1059,18 +1060,14 @@ print('Folders count: ${folders.length}');
             width: r?.p(100) ?? 100,
             child: Text(
               label,
-              style: TextStyle(
-                fontSize: r?.sp(12) ?? 12,
-                fontWeight: FontWeight.w500,
-                color: Colors.grey.shade700,
-              ),
+              style: w400_14Poppins(color: Colors.black87),
             ),
           ),
           SizedBox(width: r?.p(8) ?? 8),
           Expanded(
             child: Text(
               value,
-              style: TextStyle(fontSize: r?.sp(12) ?? 12, color: Colors.grey.shade800),
+              style: w400_14Poppins(),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
@@ -1217,14 +1214,25 @@ print("document upload date: ${document.name} - ${document.uploadDate}");
                         Row(
                           children: [
                             Expanded(
-                              child: Text(
-                                document.name,
-                                style: TextStyle(
-                                  fontSize: r.sp(16),
-                                  fontWeight: FontWeight.bold,
-                                ),
-                                maxLines: isExpanded ? 2 : 1,
-                                overflow: TextOverflow.ellipsis,
+                              child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+
+                                children: [
+                                  Text(
+                                    document.name,
+                                    style: TextStyle(
+                                      fontSize: r.sp(16),
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    maxLines: isExpanded ? 2 : 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  height5,
+                                      Text(
+                          'Type: ${document.type} • $formattedDate',
+                          style: w400_14Poppins(color: Colors.grey.shade700),
+                        ),
+                                ],
                               ),
                             ),
                             // COLLAPSIBLE EXPAND/COLLAPSE BUTTON
@@ -1271,7 +1279,7 @@ print("document upload date: ${document.name} - ${document.uploadDate}");
                                 ),
                               ),
                             ),
-                            SizedBox(width: r.p(8)),
+                            SizedBox(width: r.p(4)),
                             // Vertical More Options Button
                             IconButton(
                               onPressed: () =>
@@ -1294,14 +1302,8 @@ print("document upload date: ${document.name} - ${document.uploadDate}");
                             ),
                           ],
                         ),
-                        SizedBox(height: r.p(4)),
-                        Text(
-                          'Type: ${document.type} • $formattedDate',
-                          style: TextStyle(
-                            fontSize: r.sp(11),
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
+                        
+                    
                       ],
                     ),
                   ),
@@ -1356,12 +1358,30 @@ print("document upload date: ${document.name} - ${document.uploadDate}");
                         Icons.security,
                         r: r,
                       ),
-                     _buildDetailRowWithIcon(
-  'Expires in',
-  document.expiresAt ?? 'No Expiry',
-  Icons.schedule,
-  r: r,
-),
+                       Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.schedule, size: r?.sp(16) ?? 16, color: Colors.grey.shade600),
+          SizedBox(width: r?.p(12) ?? 12),
+          SizedBox(
+            width: r?.p(100) ?? 100,
+            child: Text(
+              "Expires in: ",
+              style: w400_14Poppins(color: Colors.black87),
+            ),
+          ),
+          SizedBox(width: r?.p(8) ?? 8),
+          Expanded(
+            child: Text(
+              _getExpiryText(document.expiresAt),
+              style: w400_14Poppins(color: _getExpiryColor(document.expiresAt)),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+                    
                       if (document.details.isNotEmpty)
                         _buildDetailRowWithIcon(
                           'Details',
@@ -1467,6 +1487,87 @@ print("document upload date: ${document.name} - ${document.uploadDate}");
       ),
     );
   }
+
+
+  
+ String _getExpiryText(String? expiryDate) {
+  if (expiryDate == null ||
+      expiryDate.isEmpty ||
+      expiryDate == 'No Expiry') {
+    return 'No Expiry';
+  }
+
+  try {
+    final expiry = DateTime.parse(expiryDate);
+
+    // Handle permanent shares (9999 date)
+    if (expiry.year >= 9999) {
+      return 'No Expiry';
+    }
+
+    final now = DateTime.now();
+    final difference = expiry.difference(now);
+
+    // Already expired
+    if (difference.isNegative) {
+      return 'Expired';
+    }
+
+    // Less than 24 hours remaining
+    if (difference.inHours < 24) {
+      final hours =
+          difference.inMinutes <= 60 ? 1 : difference.inHours + 1;
+
+      return 'In $hours hour${hours > 1 ? 's' : ''}';
+    }
+
+    // Calculate remaining days
+    final days = difference.inDays;
+
+    if (days == 1) {
+      return 'Tomorrow';
+    }
+
+    return 'In ${days + 1} days';
+  } catch (e) {
+    return 'No Expiry';
+  }
+}
+
+Color _getExpiryColor(String? expiryDate) {
+  if (expiryDate == null ||
+      expiryDate.isEmpty ||
+      expiryDate == 'No Expiry') {
+    return Colors.grey;
+  }
+
+  try {
+    final expiry = DateTime.parse(expiryDate);
+
+    if (expiry.year >= 9999) {
+      return Colors.grey;
+    }
+
+    final now = DateTime.now();
+    final difference = expiry.difference(now);
+
+    if (difference.isNegative) {
+      return Colors.grey; // Expired
+    }
+
+    if (difference.inHours < 24) {
+      return Colors.red; // In X hours
+    }
+
+    if (difference.inDays < 7) {
+      return Colors.orange; // Tomorrow to 7 days
+    }
+
+    return Colors.green; // More than 7 days
+  } catch (e) {
+    return Colors.grey;
+  }
+}
 
   // ============ FEATURE 2: LAYOUT MODES ============
 

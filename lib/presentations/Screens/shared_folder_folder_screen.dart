@@ -9,6 +9,7 @@ import 'package:digi_sanchika/services/folder_service.dart';
 import 'package:digi_sanchika/services/shared_browse_service.dart';
 import 'package:digi_sanchika/services/shared_documents_service.dart';
 import 'package:digi_sanchika/services/shared_folders_service.dart';
+import 'package:digi_sanchika/utils/app_fonts.dart';
 import 'package:digi_sanchika/utils/responsive_helper.dart';
 import 'package:digi_sanchika/widgets/view_mode_popup_button.dart';
 import 'package:flutter/material.dart';
@@ -364,21 +365,28 @@ void _clearSearch() {
                 ),
                 title: Text(
                   folder.name,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style:w500_18Poppins()
                 ),
                 subtitle: Column(
                   crossAxisAlignment:
                       CrossAxisAlignment.start,
                   children: [
-                    Text('Owner: ${folder.owner}'),
-                    Text('Created: ${folder.createdAt}'),
+                    Text('Owner: ${folder.owner}', style:w400_15Poppins()),
+                    Text('Created: ${folder.createdAt}', style:w400_15Poppins()),
                     if (folder.itemCount >= 0)
                       Text(
                         '${folder.itemCount} item${folder.itemCount == 1 ? '' : 's'}',
-                      ),
-                      Text("Expires in: ${_getExpiryText(folder.expiresAt)}"),
+                        style:w400_15Poppins()),
+                      RichText(text:  TextSpan(
+                        text: 'Expires in: ',
+                        style: w400_15Poppins(),
+                        children: [
+                          TextSpan(
+                            text: _getExpiryText(folder.expiresAt),
+                            style: w400_15Poppins(color: _getExpiryColor(folder.expiresAt)),
+                          ),
+                        ],
+                      )),
                   ],
                 ),
                 trailing: const Icon(
@@ -421,7 +429,7 @@ void _clearSearch() {
     );
   }
 
-  String _getExpiryText(String? expiryDate) {
+ String _getExpiryText(String? expiryDate) {
   if (expiryDate == null ||
       expiryDate.isEmpty ||
       expiryDate == 'No Expiry') {
@@ -437,26 +445,66 @@ void _clearSearch() {
     }
 
     final now = DateTime.now();
+    final difference = expiry.difference(now);
 
-    // Remove time portion
-    final today = DateTime(now.year, now.month, now.day);
-    final expiryDay =
-        DateTime(expiry.year, expiry.month, expiry.day);
-
-    final difference =
-        expiryDay.difference(today).inDays;
-
-    if (difference < 0) {
+    // Already expired
+    if (difference.isNegative) {
       return 'Expired';
-    } else if (difference == 0) {
-      return 'Today';
-    } else if (difference == 1) {
-      return 'Tomorrow';
-    } else {
-      return 'In $difference days';
     }
+
+    // Less than 24 hours remaining
+    if (difference.inHours < 24) {
+      final hours =
+          difference.inMinutes <= 60 ? 1 : difference.inHours + 1;
+
+      return 'In $hours hour${hours > 1 ? 's' : ''}';
+    }
+
+    // Calculate remaining days
+    final days = difference.inDays;
+
+    if (days == 1) {
+      return 'Tomorrow';
+    }
+
+    return 'In ${days + 1} days';
   } catch (e) {
     return 'No Expiry';
+  }
+}
+
+Color _getExpiryColor(String? expiryDate) {
+  if (expiryDate == null ||
+      expiryDate.isEmpty ||
+      expiryDate == 'No Expiry') {
+    return Colors.grey;
+  }
+
+  try {
+    final expiry = DateTime.parse(expiryDate);
+
+    if (expiry.year >= 9999) {
+      return Colors.grey;
+    }
+
+    final now = DateTime.now();
+    final difference = expiry.difference(now);
+
+    if (difference.isNegative) {
+      return Colors.grey; // Expired
+    }
+
+    if (difference.inHours < 24) {
+      return Colors.red; // In X hours
+    }
+
+    if (difference.inDays < 7) {
+      return Colors.orange; // Tomorrow to 7 days
+    }
+
+    return Colors.green; // More than 7 days
+  } catch (e) {
+    return Colors.grey;
   }
 }
 
