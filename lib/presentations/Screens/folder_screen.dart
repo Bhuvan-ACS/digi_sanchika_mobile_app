@@ -2569,14 +2569,14 @@ class _FolderScreenState extends State<FolderScreen> {
                       SizedBox(height: r.p(16)),
 
                       // ACTION BUTTONS ROW
-                      Wrap(
-                        spacing: r.p(8),
-                        runSpacing: r.p(8),
-                        alignment: WrapAlignment.spaceEvenly,
+                      Row(
+                      //   spacing: r.p(8),
+                      //   runSpacing: r.p(8),
+                      //   alignment: WrapAlignment.spaceEvenly,
                         children: [
                           // VIEW BUTTON
                           SizedBox(
-                            width: r.wp(0.28),
+                            width: r.wp(0.25),
                             child: OutlinedButton.icon(
                               onPressed: () =>
                                   DocumentOpenerService().openViewer(
@@ -2613,6 +2613,8 @@ class _FolderScreenState extends State<FolderScreen> {
                               ),
                             ),
                           ),
+                          SizedBox(width: r.p(8)),
+
                           // DOWNLOAD BUTTON
                           SizedBox(
                             width: r.wp(0.28),

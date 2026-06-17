@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:digi_sanchika/utils/app_fonts.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:digi_sanchika/services/api_client.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 // import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as path;
 import 'package:digi_sanchika/local_storage.dart';
@@ -1996,7 +1998,9 @@ class _HomePageState extends State<HomePage>
           ),
         ],
         bottom: tabBar,
+        
       ),
+
       body: Stack(
         children: [
           DismissKeyboard(child: content),
@@ -2021,144 +2025,6 @@ class _HomePageState extends State<HomePage>
   }) {
     if (displayFolders.isEmpty) return const SizedBox.shrink();
     final r = context.r;
-
-    Widget content;
-    switch (_currentViewMode) {
-      case AppViewMode.list:
-      case AppViewMode.detailed:
-        content = Column(
-          children: [
-            for (int i = 0; i < displayFolders.length; i++)
-              _buildFolderListItem(displayFolders[i], i),
-          ],
-        );
-        break;
-      case AppViewMode.compact:
-        content = Column(
-          children: [
-            for (final folder in displayFolders)
-              ListTile(
-                dense: true,
-                visualDensity: const VisualDensity(vertical: -2),
-                leading: Icon(
-                  Icons.folder,
-                  size: r.sp(22),
-                  color: Colors.amber.shade700,
-                ),
-                title: Text(
-                  folder.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: r.sp(14)),
-                ),
-                trailing: Icon(
-                  Icons.chevron_right_rounded,
-                  size: r.sp(20),
-                  color: Colors.grey,
-                ),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => FolderScreen(
-                        folderId: folder.id,
-                        folderName: folder.name,
-                        userName: _displayUserName,
-                      ),
-                    ),
-                  );
-                },
-                onLongPress: () {
-                  final idx = displayFolders.indexOf(folder);
-                  if (idx >= 0) {
-                    _showDeleteFolderConfirmation(context, idx);
-                  }
-                },
-              ),
-          ],
-        );
-        break;
-      case AppViewMode.grid2x2:
-      case AppViewMode.grid3x3:
-        final crossAxisCount = _currentViewMode == AppViewMode.grid3x3 ? 3 : 2;
-        final spacing = r.p(_currentViewMode == AppViewMode.grid3x3 ? 8 : 12);
-        final aspect = _currentViewMode == AppViewMode.grid3x3 ? 1.05 : 1.15;
-        content = GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: displayFolders.length,
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: crossAxisCount,
-            crossAxisSpacing: spacing,
-            mainAxisSpacing: spacing,
-            childAspectRatio: aspect,
-          ),
-          itemBuilder: (context, index) {
-            final folder = displayFolders[index];
-            return Card(
-              elevation: 1,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(r.p(12)),
-              ),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(r.p(12)),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => FolderScreen(
-                        folderId: folder.id,
-                        folderName: folder.name,
-                        userName: _displayUserName,
-                      ),
-                    ),
-                  );
-                },
-                onLongPress: () =>
-                    _showDeleteFolderConfirmation(context, index),
-                child: Padding(
-                  padding: EdgeInsets.all(r.p(10)),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Container(
-                            width: r.p(38),
-                            height: r.p(38),
-                            decoration: BoxDecoration(
-                              color: Colors.amber.withAlpha(22),
-                              borderRadius: BorderRadius.circular(r.p(10)),
-                            ),
-                            child: Icon(
-                              Icons.folder_rounded,
-                              size: r.sp(22),
-                              color: Colors.amber.shade700,
-                            ),
-                          ),
-                        ],
-                      ),
-                      SizedBox(height: r.p(8)),
-                      Text(
-                        folder.name,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: r.sp(13),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-        break;
-    }
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2189,10 +2055,140 @@ class _HomePageState extends State<HomePage>
           ],
         ),
         SizedBox(height: r.p(8)),
-        content,
-        SizedBox(height: r.p(16)),
-      ],
-    );
+       SizedBox(
+  height: 300.h,
+  child: GridView.builder(
+    shrinkWrap: true,
+    physics: const NeverScrollableScrollPhysics(),
+    itemCount: displayFolders.length,
+    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+      crossAxisCount: 2,
+      crossAxisSpacing: 12.w,
+      mainAxisSpacing: 12.h,
+      childAspectRatio: 1.1,
+    ),
+    itemBuilder: (context, index) {
+      final folder = displayFolders[index];
+
+      return Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(r.p(12)),
+        elevation: 1,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(r.p(12)),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => FolderScreen(
+                  folderId: folder.id,
+                  folderName: folder.name,
+                  userName: _displayUserName,
+                ),
+              ),
+            );
+          },
+          onLongPress: () =>
+              _showDeleteFolderConfirmation(context, index),
+          child: Container(
+            padding: EdgeInsets.all(r.p(14)),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(r.p(12)),
+              border: Border.all(
+                color: Colors.grey.shade200,
+              ),
+            ),
+            child: Column(
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment:
+                          MainAxisAlignment.spaceBetween,
+                      children: [
+                        Container(
+                          padding: EdgeInsets.all(r.p(9)),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.shade50,
+                            borderRadius:
+                                BorderRadius.circular(r.p(10)),
+                          ),
+                          child: Icon(
+                            Icons.folder,
+                            color: Colors.amber.shade700,
+                            size: r.sp(26),
+                          ),
+                        ),
+                        PopupMenuButton(
+                          itemBuilder: (context) => [
+                            const PopupMenuItem(
+                              value: 'download',
+                              child: Text('Download'),
+                            ),
+                            const PopupMenuItem(
+                              value: 'download_zip',
+                              child: Text('Download as ZIP'),
+                            ),
+                            const PopupMenuItem(
+                              value: 'share',
+                              child: Text('Share Folder'),
+                            ),
+                            const PopupMenuItem(
+                              value: 'delete',
+                              child: Text('Delete Folder'),
+                            ),
+                          ],
+                          onSelected: (value) {
+                            if (value == 'download') {
+                              _downloadFolderFiles(folder);
+                            } else if (value ==
+                                'download_zip') {
+                              _downloadFolderZip(folder);
+                            } else if (value == 'share') {
+                              _showFolderShareDialog(folder);
+                            } else if (value == 'delete') {
+                              _showDeleteFolderConfirmation(
+                                  context, index);
+                            }
+                          },
+                          icon: Icon(
+                            Icons.more_vert,
+                            size: r.sp(18),
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: r.p(12)),
+                    Text(
+                      folder.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: r.sp(15),
+                      ),
+                    ),
+                    SizedBox(height: r.p(6)),
+                    Text(
+                      '${folder.documents.length} files',
+                      style: w400_14Poppins(),
+                    ),
+                  ],
+                ),
+                Divider(height: r.p(12), color: Colors.grey.shade300),
+              ],
+            ),
+          ),
+        ),
+      );
+    },
+  ),
+)
+        ]);
+
+   
   }
 
   Widget _buildFolderSearchSection(List<Folder> matches) {
@@ -3580,6 +3576,7 @@ class _HomePageState extends State<HomePage>
             children: [
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.start,
                 children: [
                   // File-type icon
                   Container(
@@ -3598,16 +3595,37 @@ class _HomePageState extends State<HomePage>
                         Row(
                           children: [
                             Expanded(
-                              child: Text(
-                                document.name,
-                                style: TextStyle(
-                                  fontSize: r.sp(15),
-                                  fontWeight: FontWeight.bold,
-                                ),
-                                maxLines: isExpanded ? 2 : 1,
-                                overflow: TextOverflow.ellipsis,
+                              child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+
+                                children: [
+                                  Text(
+                                    document.name,
+                                    style: TextStyle(
+                                      fontSize: r.sp(15),
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    maxLines: isExpanded ? 2 : 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                      SizedBox(height: r.p(3)),
+                                  
+                        Text(
+                          'Type: ${document.type} • $formattedDate',
+                          style:w500_14Poppins(color:Colors.grey.shade600 ),
+                        ),
+                        SizedBox(height: r.p(2)),
+                        Text(
+                          'Path: $folderPath / ${document.name}',
+                          style: w400_13Poppins(color:Colors.grey.shade600 ),
+                          maxLines: isExpanded ? 2 : 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                                ],
                               ),
                             ),
+                          
+                            
                             // Expand / collapse
                             GestureDetector(
                               onTap: () => setState(() {
@@ -3665,22 +3683,7 @@ class _HomePageState extends State<HomePage>
                                 ),
                               ),
                             ],
-                            // Favourite
-                            IconButton(
-                              visualDensity: VisualDensity.compact,
-                              onPressed: () => _toggleFavorite(document),
-                              icon: Icon(
-                                _isFavorite(document.id)
-                                    ? Icons.favorite
-                                    : Icons.favorite_border,
-                                size: r.sp(20),
-                                color: _isFavorite(document.id)
-                                    ? Colors.red
-                                    : Colors.white,
-                              ),
-                              tooltip: 'Favourite',
-                            ),
-                            // More actions
+                        
                             IconButton(
                               visualDensity: VisualDensity.compact,
                               onPressed: () =>
@@ -3703,24 +3706,7 @@ class _HomePageState extends State<HomePage>
                             ),
                           ],
                         ),
-                        SizedBox(height: r.p(3)),
-                        Text(
-                          'Type: ${document.type} • $formattedDate',
-                          style: TextStyle(
-                            fontSize: r.sp(11),
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
-                        SizedBox(height: r.p(2)),
-                        Text(
-                          'Path: $folderPath / ${document.name}',
-                          style: TextStyle(
-                            fontSize: r.sp(11),
-                            color: Colors.grey.shade600,
-                          ),
-                          maxLines: isExpanded ? 2 : 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                    
                       ],
                     ),
                   ),
@@ -3738,17 +3724,17 @@ class _HomePageState extends State<HomePage>
                       SizedBox(height: r.p(14)),
                       const Divider(height: 1),
                       SizedBox(height: r.p(10)),
-                      _buildDetailRow('Owner', document.owner, Icons.person),
-                      _buildDetailRow('Path', folderPath, Icons.folder),
+                      _buildDetailRow('Owner', document.owner, Icons.person_2_outlined),
+                      _buildDetailRow('Path', folderPath, Icons.folder_copy_outlined),
                       _buildDetailRow(
                         'Classification',
                         document.classification,
-                        Icons.security,
+                        Icons.security_outlined,
                       ),
                       _buildDetailRow(
                         'Sharing',
                         document.sharingType,
-                        Icons.share,
+                        Icons.share_outlined,
                       ),
                       if (document.details.isNotEmpty)
                         _buildDetailRow(
@@ -3848,19 +3834,19 @@ class _HomePageState extends State<HomePage>
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: r.sp(15), color: Colors.indigo),
+          Icon(icon, size: r.sp(15), color: Colors.grey),
           SizedBox(width: r.p(8)),
           SizedBox(
             width: r.p(100),
             child: Text(
               '$label:',
-              style: TextStyle(fontWeight: FontWeight.w600, fontSize: r.sp(12)),
+              style: w400_14Poppins(color:Colors.grey.shade600),
             ),
           ),
           Expanded(
             child: Text(
               value,
-              style: TextStyle(fontSize: r.sp(12), color: Colors.grey.shade700),
+              style: w500_14Poppins(),
             ),
           ),
         ],

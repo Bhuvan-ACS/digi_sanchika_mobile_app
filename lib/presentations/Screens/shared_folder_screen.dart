@@ -1,5 +1,6 @@
 // screens/shared_folder_screen.dart
 import 'dart:convert';
+import 'package:digi_sanchika/utils/app_fonts.dart';
 import 'package:flutter/material.dart';
 import 'package:digi_sanchika/services/shared_browse_service.dart';
 import 'package:digi_sanchika/models/document.dart';
@@ -738,7 +739,7 @@ class _SharedFolderScreenState extends State<SharedFolderScreen> {
       onTap: () => _handleDocumentDoubleTap(document),
       borderRadius: BorderRadius.circular(12),
       child: Card(
-        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        margin: const EdgeInsets.symmetric( vertical: 4),
         elevation: 2,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         child: Padding(
@@ -765,14 +766,27 @@ class _SharedFolderScreenState extends State<SharedFolderScreen> {
                         Row(
                           children: [
                             Expanded(
-                              child: Text(
-                                document.name,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                                maxLines: isExpanded ? 2 : 1,
-                                overflow: TextOverflow.ellipsis,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    document.name,
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    maxLines: isExpanded ? 2 : 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  height5,
+                                     Text(
+                                                        'Type: ${document.type} • $formattedDate',
+                                                        style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade600,
+                                                        ),
+                                                      ),
+                                ],
                               ),
                             ),
                             GestureDetector(
@@ -783,8 +797,8 @@ class _SharedFolderScreenState extends State<SharedFolderScreen> {
                               },
                               child: AnimatedContainer(
                                 duration: const Duration(milliseconds: 300),
-                                width: 20,
-                                height: 20,
+                                width: 25,
+                                height: 25,
                                 decoration: BoxDecoration(
                                   color: isExpanded
                                       ? color.withAlpha(20)
@@ -834,13 +848,7 @@ class _SharedFolderScreenState extends State<SharedFolderScreen> {
                             ),
                           ],
                         ),
-                        Text(
-                          'Type: ${document.type} • $formattedDate',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
+                     
                       ],
                     ),
                   ),
