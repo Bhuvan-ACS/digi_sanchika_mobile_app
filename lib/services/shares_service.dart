@@ -96,10 +96,10 @@ class SharesService {
       if (isEmail) 'sharedWithEmail': sharedWithIdOrEmail,
       if (!isEmail) 'sharedWithId': sharedWithIdOrEmail,
       'permission': permission,
-      if (expiryDays != null) 'expiryDays': expiryDays,
-      if (expiryDays != null) 'expiry_days': expiryDays,
-      if (expiryHours != null) 'expiryHours': expiryHours,
-      if (expiryHours != null) 'expiry_hours': expiryHours,
+      'expiryDays': ?expiryDays,
+      'expiry_days': ?expiryDays,
+      'expiryHours': ?expiryHours,
+      'expiry_hours': ?expiryHours,
       'allowDownload': allowDownload,
       'allow_download': allowDownload,
       'allowEdit': allowEdit,
@@ -122,10 +122,10 @@ class SharesService {
       ShareEntityType.folder => '$_sharesBasePath/folders/$shareId',
     };
     final payload = <String, dynamic>{
-      if (allowDownload != null) 'allowDownload': allowDownload,
-      if (allowDownload != null) 'allow_download': allowDownload,
-      if (allowEdit != null) 'allowEdit': allowEdit,
-      if (allowEdit != null) 'allow_edit': allowEdit,
+      'allowDownload': ?allowDownload,
+      'allow_download': ?allowDownload,
+      'allowEdit': ?allowEdit,
+      'allow_edit': ?allowEdit,
     };
     final response = await _dio.patch(path, data: payload);
     return response.statusCode == 200;

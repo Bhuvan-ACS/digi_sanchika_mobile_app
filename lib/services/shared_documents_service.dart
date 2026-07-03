@@ -67,6 +67,23 @@ class SharedDocumentsResponse {
               : (viaGroupRaw is Map ? Map<String, dynamic>.from(viaGroupRaw) : null);
           final sharedByName =
               sharedBy?['full_name']?.toString() ?? sharedBy?['name']?.toString();
+              final effectiveAccess =
+              raw['effectiveAccess'] is Map<String, dynamic>
+                  ? Map<String, dynamic>.from(raw['effectiveAccess'])
+                  : <String, dynamic>{};
+               final rawPermission =
+    effectiveAccess['collaborationLevel']?.toString() ??
+    share['collaboration_level']?.toString() ??
+    share['permission']?.toString();
+
+final permission = _normalizePermissionLabel(rawPermission, canEdit: effectiveAccess['canEdit'] == true);
+
+          // NEW: capability booleans, used to gate UI actions (edit/comment/etc).
+          final canEdit = effectiveAccess['canEdit'] == true;
+          final canComment = effectiveAccess['canComment'] == true;
+          final canAnnotate = effectiveAccess['canAnnotate'] == true;
+          final canUpload = effectiveAccess['canUpload'] == true;
+          final canModerate = effectiveAccess['canModerate'] == true;
 
           final document = Document(
             id: docId,
@@ -80,6 +97,13 @@ class SharedDocumentsResponse {
                     .toString(),
             keyword: doc['keywords']?.toString() ?? '',
             uploadDate: _formatDate(doc['created_at'] ?? doc['updated_at']),
+            updatedAt:
+      doc['updated_at']?.toString() ??
+      doc['updatedAt']?.toString() ??
+      raw['updated_at']?.toString() ??
+      raw['updatedAt']?.toString() ??
+      share['updated_at']?.toString() ??
+      share['updatedAt']?.toString(),
             owner:
                 owner?['full_name']?.toString() ??
                 owner?['name']?.toString() ??
@@ -106,6 +130,13 @@ class SharedDocumentsResponse {
       share['expires_at']?.toString() ??
       doc['expires_at']?.toString() ??
       doc['expiresAt']?.toString(),
+      permission: permission,
+            canEdit: canEdit,
+            canComment: canComment,
+            canAnnotate: canAnnotate,
+            canUpload: canUpload,
+            canModerate: canModerate,
+      
           );
           documents.add(document);
           debugPrint(
@@ -114,6 +145,10 @@ class SharedDocumentsResponse {
  debugPrint(
   'Document: ${document.name}, keywprd: ${document.keyword}, sharedBy: ${document.sharedByName}, sharedViaGroup: ${document.sharedViaGroupName}',
 );
+  debugPrint(
+            'Document: ${document.name}, updatedAt: ${document.updatedAt}, '
+            'permission: ${document.permission}, canEdit: ${document.canEdit}',
+          );
         } catch (e) {
           debugPrint('Error parsing document: $e');
         }
@@ -192,6 +227,22 @@ class SharedDocumentsResponse {
     if (type.startsWith('text/')) return 'txt';
     return _extractFileType(filename);
   }
+
+static String? _normalizePermissionLabel(String? value, {bool canEdit = false}) {
+  if (value == null) return null;
+  final v = value.toLowerCase().trim();
+
+  if (v.contains('full')) return 'Full Access';
+  if (v.contains('edit')) return 'Can Edit';
+  if (v.contains('comment')) return 'Can Comment';
+  if (v.contains('view')) return 'View Only';
+
+  // Fallback: if the string doesn't match known patterns but the
+  // capability flag says edit is allowed, trust that over the label.
+  if (canEdit) return 'Can Edit';
+
+  return value; // unknown value, show as-is rather than hide it
+}
 
   static String _formatDate(dynamic date) {
     if (date == null) return 'Unknown';

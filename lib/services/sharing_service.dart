@@ -133,8 +133,8 @@ class SharingService {
       'allowDownload': allowDownload,
       'allowEdit': allowEdit,
       'collaborationLevel': collaborationLevel,
-      if (expiryHours != null) 'expiryHours': expiryHours,
-      if (expiryDays != null) 'expiryDays': expiryDays,
+      'expiryHours': ?expiryHours,
+      'expiryDays': ?expiryDays,
       if (noExpiry) 'noExpiry': true,
       if (message != null && message.trim().isNotEmpty) 'message': message.trim(),
     });
@@ -163,8 +163,8 @@ class SharingService {
       'allowDownload': allowDownload,
       'allowEdit': allowEdit,
       'collaborationLevel': collaborationLevel,
-      if (expiryHours != null) 'expiryHours': expiryHours,
-      if (expiryDays != null) 'expiryDays': expiryDays,
+      'expiryHours': ?expiryHours,
+      'expiryDays': ?expiryDays,
       if (noExpiry) 'noExpiry': true,
     });
     return response.statusCode == 200 || response.statusCode == 201;
@@ -189,12 +189,12 @@ class SharingService {
         '$_sharesBasePath/folders/group/${grant.id}',
     };
     final payload = {
-      if (permission != null) 'permission': permission,
-      if (allowDownload != null) 'allowDownload': allowDownload,
-      if (allowEdit != null) 'allowEdit': allowEdit,
-      if (collaborationLevel != null) 'collaborationLevel': collaborationLevel,
-      if (expiryHours != null) 'expiryHours': expiryHours,
-      if (expiryDays != null) 'expiryDays': expiryDays,
+      'permission': ?permission,
+      'allowDownload': ?allowDownload,
+      'allowEdit': ?allowEdit,
+      'collaborationLevel': ?collaborationLevel,
+      'expiryHours': ?expiryHours,
+      'expiryDays': ?expiryDays,
       if (noExpiry) 'noExpiry': true,
     };
     if (payload.isEmpty) return false;
@@ -258,12 +258,12 @@ class SharingService {
     };
     final response = await _dio.put(path, data: {
       'accessEnabled': accessEnabled,
-      if (permission != null) 'permission': permission,
-      if (allowDownload != null) 'allowDownload': allowDownload,
-      if (allowEdit != null) 'allowEdit': allowEdit,
-      if (collaborationLevel != null) 'collaborationLevel': collaborationLevel,
-      if (expiryHours != null) 'expiryHours': expiryHours,
-      if (expiryDays != null) 'expiryDays': expiryDays,
+      'permission': ?permission,
+      'allowDownload': ?allowDownload,
+      'allowEdit': ?allowEdit,
+      'collaborationLevel': ?collaborationLevel,
+      'expiryHours': ?expiryHours,
+      'expiryDays': ?expiryDays,
       if (inheritExpiry) 'expiresAt': null,
     });
     return response.statusCode == 200 || response.statusCode == 201;
@@ -317,8 +317,8 @@ class SharingService {
       'entityId': entityId,
       'allowView': allowView,
       'allowDownload': allowDownload,
-      if (expiryHours != null) 'expiryHours': expiryHours,
-      if (expiryDays != null) 'expiryDays': expiryDays,
+      'expiryHours': ?expiryHours,
+      'expiryDays': ?expiryDays,
       if (noExpiry) 'noExpiry': true,
     });
     if (response.statusCode != 200 && response.statusCode != 201) return null;
@@ -335,10 +335,10 @@ class SharingService {
     bool noExpiry = false,
   }) async {
     final response = await _dio.patch('$_apiPrefix/public-links/${link.id}', data: {
-      if (allowView != null) 'allowView': allowView,
-      if (allowDownload != null) 'allowDownload': allowDownload,
-      if (expiryHours != null) 'expiryHours': expiryHours,
-      if (expiryDays != null) 'expiryDays': expiryDays,
+      'allowView': ?allowView,
+      'allowDownload': ?allowDownload,
+      'expiryHours': ?expiryHours,
+      'expiryDays': ?expiryDays,
       if (noExpiry) 'noExpiry': true,
     });
     return response.statusCode == 200;

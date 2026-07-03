@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:digi_sanchika/utils/app_fonts.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:digi_sanchika/models/document.dart';
@@ -499,7 +500,7 @@ class _AllFoldersScreenState extends State<AllFoldersScreen> {
       child: Material(
         color: Colors.white,
         borderRadius: BorderRadius.circular(r.p(12)),
-        elevation: 1,
+        // elevation: 1,
         child: InkWell(
           borderRadius: BorderRadius.circular(r.p(12)),
           onTap: () {
@@ -706,18 +707,16 @@ class _AllFoldersScreenState extends State<AllFoldersScreen> {
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
+      backgroundColor: Colors.grey.shade50,
+iconTheme: IconThemeData(color: Colors.black87),
         titleSpacing: 0,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Folders'),
+             Text('Folders', style: w600_16Poppins()),
             Text(
               'All folders',
-              style: TextStyle(
-                fontSize: r.sp(12),
-                fontWeight: FontWeight.w400,
-                color: Colors.white.withAlpha(200),
-              ),
+              style: w400_12Poppins()
             ),
           ],
         ),

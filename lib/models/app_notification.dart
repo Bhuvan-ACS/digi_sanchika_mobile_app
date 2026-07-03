@@ -1,3 +1,22 @@
+class NotificationResponse {
+  final List<AppNotification> notifications;
+  final int unreadCount;
+
+  NotificationResponse({
+    required this.notifications,
+    required this.unreadCount,
+  });
+
+  factory NotificationResponse.fromJson(Map<String, dynamic> json) {
+    return NotificationResponse(
+      notifications: (json['notifications'] as List<dynamic>? ?? [])
+          .map((e) => AppNotification.fromJson(e))
+          .toList(),
+      unreadCount: json['unreadCount'] ?? 0,
+    );
+  }
+}
+
 class AppNotification {
   final String id;
   final String title;

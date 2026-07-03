@@ -1,3 +1,4 @@
+import 'package:digi_sanchika/utils/app_fonts.dart';
 import 'package:flutter/material.dart';
 import 'package:digi_sanchika/services/favorites_service.dart';
 import 'package:digi_sanchika/models/favorite_item.dart';
@@ -378,7 +379,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
           DocumentOpenerService().openPreviewDialog(context: context, document: doc),
       borderRadius: BorderRadius.circular(12),
       child: Card(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         elevation: 2,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         child: Padding(
@@ -587,13 +588,13 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
       case AppViewMode.list:
       case AppViewMode.detailed:
         return ListView.builder(
-          padding: const EdgeInsets.only(top: 8, bottom: 24),
+          padding: const EdgeInsets.only(top: 8, bottom: 8),
           itemCount: _documents.length,
           itemBuilder: (context, index) => _buildFavoriteCard(_documents[index]),
         );
       case AppViewMode.compact:
         return ListView.builder(
-          padding: const EdgeInsets.only(top: 8, bottom: 24),
+          padding: const EdgeInsets.only(top: 8, bottom: 8),
           itemCount: _documents.length,
           itemBuilder: (context, index) =>
               _buildFavoriteCompactItem(_documents[index], index),
@@ -709,8 +710,21 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+        backgroundColor: Colors.grey.shade200,
+
       appBar: AppBar(
-        title: const Text('Favorites'),
+        backgroundColor: Colors.grey.shade200,
+        title:  Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Favorites',style: w700_18Poppins()),
+            height5,
+            Text("Documents you saved for quick access",style: w400_12Poppins(color: Colors.black54),),
+            height5,
+
+          ],
+        ),
+        iconTheme: IconThemeData(color: Colors.black),
         actions: [
           ViewModePopupButton(
             value: _currentViewMode,

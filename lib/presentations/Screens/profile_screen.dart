@@ -1,4 +1,5 @@
 // ignore_for_file: use_build_context_synchronously
+import 'package:digi_sanchika/utils/app_fonts.dart';
 import 'package:flutter/material.dart';
 import 'package:digi_sanchika/services/permission_service.dart';
 import 'package:digi_sanchika/services/profile_service.dart';
@@ -12,12 +13,12 @@ import 'package:digi_sanchika/presentations/Screens/recycle_bin_screen.dart';
 import 'package:digi_sanchika/services/api_service.dart';
 import 'package:digi_sanchika/utils/app_theme.dart';
 import 'package:digi_sanchika/utils/responsive_helper.dart';
-import 'package:digi_sanchika/widgets/app_snackbar.dart';
 import 'package:digi_sanchika/widgets/confirm_dialog.dart';
 import 'package:digi_sanchika/widgets/empty_state_widget.dart';
 import 'package:digi_sanchika/widgets/permissions_modal.dart';
 import 'package:digi_sanchika/widgets/responsive_page.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -217,105 +218,156 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text('My Profile'),
-        actions: [
-          IconButton(
-            onPressed: _loadUserProfile,
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: 'Refresh',
-          ),
-        ],
-      ),
-      body: ResponsivePage(
-        child: _isLoading
-            ? _buildSkeleton()
-            : _hasError
-                ? _buildError()
-                : _userProfile == null
-                    ? _buildError()
-                    : _buildBody(),
-      ),
-    );
-  }
-
-  Widget _buildSkeleton() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(vertical: 20),
-      child: Column(
-        children: [
-          _shimmerBox(double.infinity, 140),
-          const SizedBox(height: 24),
-          _shimmerBox(double.infinity, 54),
-          const SizedBox(height: 12),
-          _shimmerBox(double.infinity, 54),
-          const SizedBox(height: 12),
-          _shimmerBox(double.infinity, 54),
-        ],
-      ),
-    );
-  }
-
-  Widget _shimmerBox(double w, double h) => Container(
-        width: w,
-        height: h,
-        decoration: BoxDecoration(
-          color: AppColors.border,
-          borderRadius: BorderRadius.circular(AppRadius.md),
-        ),
-      );
-
-  Widget _buildError() => EmptyStateWidget(
-        icon: Icons.cloud_off_rounded,
-        title: 'Could Not Load Profile',
-        subtitle: _errorMessage.isNotEmpty ? _errorMessage : 'Please check your connection and try again.',
-        action: ElevatedButton.icon(
-          onPressed: _loadUserProfile,
-          icon: const Icon(Icons.refresh_rounded, size: 16),
-          label: const Text('Retry'),
-        ),
-      );
-
-  Widget _buildBody() {
     final p = _userProfile!;
-    final isExpanded =
-        ResponsiveHelper.of(context).widthClass == WidthClass.expanded;
 
-    if (isExpanded) {
-      return SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(vertical: 20),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Left column: profile summary + details
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildAvatarCard(p),
-                  const SizedBox(height: 24),
-                  _sectionLabel('Profile Details'),
+    return Scaffold(
+      backgroundColor: const Color(0xFFF6F7FB),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Profile Header
+              _buildAvatarCard(p),
+          
+              const SizedBox(height: 32),
+
+              Text(
+                'ACCOUNT ACTIONS',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.grey.shade500,
+                  letterSpacing: 1.2,
+                ),
+              ),
+
+              const SizedBox(height: 14),
+
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      blurRadius: 20,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    _buildActionTile(
+                      icon: Icons.lock_outline,
+                      iconColor: Colors.indigo,
+                      title: 'Change Password',
+                      subtitle: 'Update your account password',
+                      onTap: _showChangePasswordDialog,
+                    ),
+                    Divider(height: 1, color: Colors.grey.shade200),
+                    _buildActionTile(
+                      icon: Icons.download_outlined,
+                      iconColor: Colors.orange,
+                      title: 'Download Requests',
+                      subtitle: 'Manage document download requests',
+                      onTap:_navigateToDownloadRequests,
+                    ),
+                    Divider(height: 1, color: Colors.grey.shade200),
+                    _buildActionTile(
+                      icon: Icons.edit_outlined,
+                      iconColor: Colors.indigo,
+                      title: 'Edit Requests',
+                      subtitle: 'Approve or reject edit access',
+                      onTap: _navigateToEditRequests,
+                    ),
+                    Divider(height: 1, color: Colors.grey.shade200),
+                    _buildActionTile(
+                      icon: Icons.favorite,
+                      iconColor: Colors.pink,
+                      title: 'Favourites',
+                      subtitle: 'Quick access to saved items',
+                      onTap: _navigateToFavorites,
+                    ),
+                    Divider(height: 1, color: Colors.grey.shade200),
+                    _buildActionTile(
+                      icon: Icons.delete_outline,
+                      iconColor: Colors.red,
+                      title: 'Recycle Bin',
+                      subtitle: 'Restore or permanently delete items',
+                      onTap: _navigateToRecycleBin,
+                    ),
+                    Divider(height: 1, color: Colors.grey.shade200),
+                    _buildActionTile(
+                      icon: Icons.lock_reset,
+                      iconColor: Colors.orange,
+                      title: 'Password Reset Requests',
+                      subtitle: 'Approve or reject reset requests',
+                      onTap: _navigateToPasswordResetRequests,
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 32),
+
+              Text(
+                'APP PERMISSIONS',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.grey.shade500,
+                  letterSpacing: 1.2,
+                ),
+              ),
+
+              const SizedBox(height: 14),
+
+            _buildPermissionsTile(),
+              const SizedBox(height: 28),
+               _sectionLabel('Profile Details'),
                   const SizedBox(height: 12),
-                  _buildInfoTile(
-                    Icons.badge_rounded,
-                    AppColors.primary,
-                    'Employee ID',
-                    p.employeeId,
-                  ),
-                  _buildInfoTile(
+                  Container(
+                      decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      blurRadius: 20,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: Column(
+                        children: [
+                          _buildInfoTile(
+                            Icons.badge_rounded,
+                            AppColors.primary,
+                            'Employee ID',
+                            p.employeeId,
+                          ),
+                    Divider(height: 1, color: Colors.grey.shade200),
+
+                             _buildInfoTile(
                     Icons.business_rounded,
                     AppColors.success,
                     'Department',
                     p.department,
                   ),
+                    Divider(height: 1, color: Colors.grey.shade200),
+
                   _buildInfoTile(
                     Icons.email_rounded,
                     AppColors.warning,
                     'Email Address',
                     p.email,
                   ),
+                    Divider(height: 1, color: Colors.grey.shade200),
+
                   if (p.createdAt != null)
                     _buildInfoTile(
                       Icons.calendar_today_rounded,
@@ -323,300 +375,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       'Account Created',
                       _formatDate(p.createdAt),
                     ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 24),
-            // Right column: actions + permissions + sign out
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _sectionLabel('Account Actions'),
-                  const SizedBox(height: 12),
-                  _buildActionTile(
-                    icon: Icons.lock_reset_rounded,
-                    iconColor: AppColors.primary,
-                    title: 'Change Password',
-                    subtitle: 'Update your account password',
-                    onTap: _showChangePasswordDialog,
-                  ),
-                  _buildActionTile(
-                    icon: Icons.download_rounded,
-                    iconColor: AppColors.warning,
-                    title: 'Download Requests',
-                    subtitle: 'Manage your document download requests',
-                    onTap: _navigateToDownloadRequests,
-                  ),
-                  _buildActionTile(
-                    icon: Icons.edit_note_rounded,
-                    iconColor: const Color(0xFF2563EB),
-                    title: 'Edit Requests',
-                    subtitle: 'Approve or reject edit access requests',
-                    onTap: _navigateToEditRequests,
-                  ),
-                  _buildActionTile(
-                    icon: Icons.favorite_rounded,
-                    iconColor: const Color(0xFFDB2777),
-                    title: 'Favourites',
-                    subtitle: 'Quick access to saved items',
-                    onTap: _navigateToFavorites,
-                  ),
-                  _buildActionTile(
-                    icon: Icons.delete_outline_rounded,
-                    iconColor: AppColors.error,
-                    title: 'Recycle Bin',
-                    subtitle: 'Restore or permanently delete items',
-                    onTap: _navigateToRecycleBin,
-                  ),
-                  if (p.isAdmin)
-                    _buildActionTile(
-                      icon: Icons.lock_reset_rounded,
-                      iconColor: AppColors.warning,
-                      title: 'Password Reset Requests',
-                      subtitle: 'Approve or reject reset requests',
-                      onTap: _navigateToPasswordResetRequests,
-                    ),
-                  const SizedBox(height: 24),
-                  _sectionLabel('App Permissions'),
-                  const SizedBox(height: 12),
-                  _buildPermissionsTile(),
-                  const SizedBox(height: 28),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: OutlinedButton.icon(
-                      onPressed: _showLogoutDialog,
-                      icon: const Icon(Icons.logout_rounded, size: 18),
-                      label: const Text('Sign Out'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.error,
-                        side: const BorderSide(
-                          color: AppColors.errorBorder,
-                          width: 1.5,
-                        ),
-                        backgroundColor: AppColors.errorLight,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(AppRadius.sm),
-                        ),
+                        ],
                       ),
                     ),
                   ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(vertical: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ── Avatar card ─────────────────────────────────────────────────────
-          _buildAvatarCard(p),
-
-          const SizedBox(height: 24),
-
-          // ── Account Actions ──────────────────────────────────────────────────
-          _sectionLabel('Account Actions'),
-          const SizedBox(height: 12),
-          _buildActionTile(
-            icon: Icons.lock_reset_rounded,
-            iconColor: AppColors.primary,
-            title: 'Change Password',
-            subtitle: 'Update your account password',
-            onTap: _showChangePasswordDialog,
-          ),
-          _buildActionTile(
-            icon: Icons.download_rounded,
-            iconColor: AppColors.warning,
-            title: 'Download Requests',
-            subtitle: 'Manage your document download requests',
-            onTap: _navigateToDownloadRequests,
-          ),
-          _buildActionTile(
-            icon: Icons.edit_note_rounded,
-            iconColor: const Color(0xFF2563EB),
-            title: 'Edit Requests',
-            subtitle: 'Approve or reject edit access requests',
-            onTap: _navigateToEditRequests,
-          ),
-          _buildActionTile(
-            icon: Icons.favorite_rounded,
-            iconColor: Color(0xFFDB2777),
-            title: 'Favourites',
-            subtitle: 'Quick access to saved items',
-            onTap: _navigateToFavorites,
-          ),
-          _buildActionTile(
-            icon: Icons.delete_outline_rounded,
-            iconColor: AppColors.error,
-            title: 'Recycle Bin',
-            subtitle: 'Restore or permanently delete items',
-            onTap: _navigateToRecycleBin,
-          ),
-          if (p.isAdmin)
-            _buildActionTile(
-              icon: Icons.lock_reset_rounded,
-              iconColor: AppColors.warning,
-              title: 'Password Reset Requests',
-              subtitle: 'Approve or reject reset requests',
-              onTap: _navigateToPasswordResetRequests,
-            ),
-
-          const SizedBox(height: 24),
-
-          // ── App Permissions ──────────────────────────────────────────────────
-          _sectionLabel('App Permissions'),
-          const SizedBox(height: 12),
-          _buildPermissionsTile(),
-
-          const SizedBox(height: 24),
-
-          // ── Profile Details ──────────────────────────────────────────────────
-          _sectionLabel('Profile Details'),
-          const SizedBox(height: 12),
-          _buildInfoTile(Icons.badge_rounded, AppColors.primary,
-              'Employee ID', p.employeeId),
-          _buildInfoTile(Icons.business_rounded, AppColors.success,
-              'Department', p.department),
-          _buildInfoTile(Icons.email_rounded, AppColors.warning,
-              'Email Address', p.email),
-          if (p.createdAt != null)
-            _buildInfoTile(Icons.calendar_today_rounded,
-                AppColors.primaryLight, 'Account Created',
-                _formatDate(p.createdAt)),
-
-          const SizedBox(height: 28),
-
-          // ── Sign Out ─────────────────────────────────────────────────────────
-          SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: OutlinedButton.icon(
-              onPressed: _showLogoutDialog,
-              icon: const Icon(Icons.logout_rounded, size: 18),
-              label: const Text('Sign Out'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.error,
-                side: const BorderSide(color: AppColors.errorBorder, width: 1.5),
-                backgroundColor: AppColors.errorLight,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(AppRadius.sm),
-                ),
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 16),
-
-          // ── Info note ────────────────────────────────────────────────────────
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: AppColors.infoLight,
-              borderRadius: BorderRadius.circular(AppRadius.sm),
-              border: Border.all(color: AppColors.infoBorder),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                Icon(Icons.info_outline_rounded,
-                    size: 16, color: AppColors.primary),
-                SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'For profile updates, please contact your system administrator.',
-                    style: TextStyle(
-                        fontSize: 12,
-                        color: AppColors.primary,
-                        height: 1.5),
+               height10,
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: OutlinedButton.icon(
+                  onPressed: _showLogoutDialog,
+                  icon: const Icon(Icons.logout_rounded, size: 18),
+                  label: const Text('Sign Out'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.error,
+                    side: const BorderSide(
+                      color: AppColors.errorBorder,
+                      width: 1.5,
+                    ),
+                    backgroundColor: AppColors.errorLight,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                    ),
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-
-          const SizedBox(height: 24),
-        ],
+        ),
       ),
     );
   }
+  
+
+ 
+
+
+  
 
   // ── Sub-widgets ────────────────────────────────────────────────────────────
 
-  Widget _buildAvatarCard(UserProfile p) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
-      decoration: BoxDecoration(
-        gradient: AppColors.brandGradient,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        boxShadow: AppShadows.md,
-      ),
-      child: Column(
-        children: [
-          // Initials avatar
-          Container(
-            width: 82,
-            height: 82,
-            decoration: BoxDecoration(
-              color: Colors.white.withAlpha(35),
-              shape: BoxShape.circle,
-              border: Border.all(
-                  color: Colors.white.withAlpha(100), width: 2.5),
-            ),
-            child: Center(
-              child: Text(
-                _initials(p.employeeName),
-                style: const TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                  letterSpacing: 1,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 14),
-
-          // Name
-          Text(
-            p.employeeName,
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 4),
-
-          // Role / status badge
-          Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            decoration: BoxDecoration(
-              color: Colors.white.withAlpha(30),
-              borderRadius: BorderRadius.circular(AppRadius.pill),
-              border:
-                  Border.all(color: Colors.white.withAlpha(60)),
-            ),
-            child: Text(
-              p.isAdmin ? 'Administrator' : (p.isActive ? 'Active User' : 'Inactive'),
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: Colors.white,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+ 
 
   Widget _sectionLabel(String label) => Text(
         label,
@@ -636,12 +435,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       required VoidCallback onTap}) {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(color: AppColors.border),
-        boxShadow: AppShadows.xs,
-      ),
+   
       child: Material(
         color: Colors.transparent,
         borderRadius: BorderRadius.circular(AppRadius.md),
@@ -670,19 +464,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     children: [
                       Text(
                         title,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.textPrimary,
-                        ),
+                        
+                        style: w700_15Poppins()
                       ),
                       const SizedBox(height: 2),
                       Text(
                         subtitle,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.textSecondary,
-                        ),
+                        style: w400_13Poppins(color: Colors.grey.shade600)
                       ),
                     ],
                   ),
@@ -799,17 +587,137 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+Widget _buildAvatarCard(UserProfile p) {
+  return Container(
+    width: double.infinity,padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
+    decoration:  BoxDecoration(
+                  borderRadius: BorderRadius.circular(28),
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF2B41BD), Color(0xFF4F63FF)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.blue.withOpacity(0.20),
+                      blurRadius: 20,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),child: Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(children: [// Initials 
+                      Container(width: 82,height: 82,decoration: BoxDecoration(color: Colors.white.withAlpha(35),shape: BoxShape.circle,border: Border.all(color: Colors.white.withAlpha(100), width: 2.5),),child: Center(child: Text(_initials(p.employeeName),style: const TextStyle(fontSize: 28,fontWeight: FontWeight.w800,color: Colors.white,letterSpacing: 1,),),),),const SizedBox(height: 14),
+                      width10,
+                            // Name
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  p.employeeName,
+                                  style: const TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                SizedBox(height: 2.h,),
+                                 SizedBox(
+                                  width: 190.w,
+                                  child: Text(p.email,style: w400_14Poppins(color: Colors.white),overflow: TextOverflow.ellipsis,maxLines: 1,)),
+                                height5,
+                      
+                            // Role / status badge
+                            Container(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withAlpha(30),
+                                borderRadius: BorderRadius.circular(AppRadius.pill),
+                                border:
+                                    Border.all(color: Colors.white.withAlpha(60)),
+                              ),
+                              child: Text(
+                                p.isAdmin ? 'Administrator' : (p.isActive ? 'Active User' : 'Inactive'),
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                              ],
+                            ),
+                         
+                          ],
+                        ),
+                        height10,
+                        Divider(color: Colors.white54,),
+                        height10,
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                             Column(
+                               children: [
+                                 Text("222",style: w700_22Poppins(color: Colors.white),),
+                                 Text("Documents",style: w400_14Poppins(color: Colors.white),),
+                               ],
+                             ),
+    width10,
+
+    SizedBox(
+      height: 40, // Height of the divider
+      child: VerticalDivider(
+        color: Colors.white54,
+        thickness: 1,
+        width: 20, // Total space occupied
+      ),
+    ),
+
+    width10,
+    Column(
+                               children: [
+                                 Text("12",style: w700_22Poppins(color: Colors.white),),
+                                 Text("Shared",style: w400_14Poppins(color: Colors.white),),
+                               ],
+                             ),
+   width10,
+
+    SizedBox(
+      height: 40, // Height of the divider
+      child: VerticalDivider(
+        color: Colors.white54,
+        thickness: 1,
+        width: 20, // Total space occupied
+      ),
+    ),
+    width10,
+      Column(
+                               children: [
+                                 Text("222",style: w700_22Poppins(color: Colors.white),),
+                                 Text("Storage",style: w400_14Poppins(color: Colors.white),),
+                               ],
+                             ),
+
+
+                          ],
+                        )
+                    ],
+                  ),
+                ),
+);
+
+}
+
   Widget _buildInfoTile(
       IconData icon, Color color, String label, String value) {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(color: AppColors.border),
-        boxShadow: AppShadows.xs,
-      ),
+     
       child: Row(
         children: [
           Container(

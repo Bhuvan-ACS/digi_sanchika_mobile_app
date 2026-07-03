@@ -202,7 +202,7 @@ class _AdminPasswordResetRequestsScreenState
       child: ListView.separated(
         padding: const EdgeInsets.only(top: 8, bottom: 24),
         itemCount: items.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 6),
+        separatorBuilder: (_, _) => const SizedBox(height: 6),
         itemBuilder: (context, index) {
           final req = items[index];
           return Card(

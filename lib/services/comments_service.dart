@@ -36,7 +36,7 @@ class CommentsService {
   }) async {
     final resp = await _dio.get(
       '/documents/$documentId/comments',
-      queryParameters: {if (version != null) 'version': version},
+      queryParameters: {'version': ?version},
       options: Options(validateStatus: (s) => s != null && s < 500),
     );
     if (resp.statusCode != 200) return null;
@@ -87,11 +87,11 @@ class CommentsService {
       data: {
         'content': content,
         'parentId': parentId,
-        if (pageNumber != null) 'pageNumber': pageNumber,
-        if (x != null) 'x': x,
-        if (y != null) 'y': y,
+        'pageNumber': ?pageNumber,
+        'x': ?x,
+        'y': ?y,
         'visibility': visibility,
-        if (documentVersion != null) 'documentVersion': documentVersion,
+        'documentVersion': ?documentVersion,
       },
       options: Options(validateStatus: (s) => s != null && s < 500),
     );

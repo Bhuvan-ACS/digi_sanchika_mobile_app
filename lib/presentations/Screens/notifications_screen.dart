@@ -1,3 +1,4 @@
+import 'package:digi_sanchika/utils/app_fonts.dart';
 import 'package:flutter/material.dart';
 import 'package:digi_sanchika/services/notifications_service.dart';
 import 'package:digi_sanchika/models/app_notification.dart';
@@ -37,19 +38,30 @@ class _NotificationsScreenState extends State<NotificationsScreen>
   }
 
   Future<void> _loadNotifications() async {
+  setState(() {
+    _isLoading = true;
+    _error = null;
+  });
+
+  try {
+    final items = await _service.fetchNotifications();
+
+    if (!mounted) return;
+
     setState(() {
-      _isLoading = true;
-      _error = null;
+      _notifications = items.notifications;
+      _isLoading = false;
     });
-    try {
-      final items = await _service.fetchNotifications(limit: 50, offset: 0);
-      if (mounted) setState(() => _notifications = items);
-    } catch (_) {
-      if (mounted) setState(() => _error = 'Failed to load notifications');
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
+  } catch (e) {
+    if (!mounted) return;
+
+    setState(() {
+      _error = 'Failed to load notifications';
+      _isLoading = false;
+    });
   }
+}
+  
 
   List<AppNotification> get _allNotifications => _notifications;
   List<AppNotification> get _unreadNotifications =>
@@ -106,6 +118,82 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     }
   }
 
+final List<String> _filters = [
+  'All',
+  'Unread',
+  'Share',
+  'Approval',
+  'Upload',
+  'Download',
+];
+
+String _selectedFilter = 'All';
+
+List<AppNotification> get _filteredNotifications {
+  switch (_selectedFilter) {
+    case 'All':
+      return _notifications;
+
+    case 'Unread':
+      return _notifications.where((n) => !n.read).toList();
+
+    default:
+      return _notifications.where((n) {
+        return n.category?.toLowerCase() ==
+            _selectedFilter.toLowerCase();
+      }).toList();
+  }
+}
+
+
+Widget _buildFilterBar() {
+  return SizedBox(
+    height: 42,
+    child: ListView.separated(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      scrollDirection: Axis.horizontal,
+      itemCount: _filters.length,
+      separatorBuilder: (_, __) => const SizedBox(width: 10),
+      itemBuilder: (_, index) {
+        final filter = _filters[index];
+        final isSelected = _selectedFilter == filter;
+
+        return ChoiceChip(
+          label: Text(
+            filter,
+            style: TextStyle(
+              color: isSelected ? Colors.white : Colors.black,
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+            ),
+          ),
+          selected: isSelected,
+          showCheckmark: false, // Removes the tick icon
+          onSelected: (_) {
+            setState(() {
+              _selectedFilter = filter;
+            });
+          },
+          selectedColor: AppColors.primary, // Blue
+          backgroundColor: Colors.transparent,
+          disabledColor: Colors.transparent,
+          side: BorderSide(
+            color: isSelected ? AppColors.primary : Colors.grey.shade400,
+            width: 1,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+          padding: const EdgeInsets.symmetric(
+            horizontal: 18,
+            vertical: 8,
+          ),
+        );
+      },
+    ),
+  );
+}
+
   // ── Notification item card ───────────────────────────────────────────────
 
   Widget _buildNotificationItem(AppNotification n) {
@@ -137,7 +225,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
         decoration: BoxDecoration(
           color: isUnread
               ? AppColors.primaryContainer.withAlpha(80)
-              : AppColors.surface,
+              : Colors.white,
           borderRadius: BorderRadius.circular(AppRadius.md),
           boxShadow: AppShadows.xs,
         ),
@@ -155,17 +243,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                 ),
               ),
               // Left accent stripe for unread
-              Positioned(
-                left: 0,
-                top: 0,
-                bottom: 0,
-                width: 3,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: isUnread ? AppColors.primary : Colors.transparent,
-                  ),
-                ),
-              ),
+            
               Padding(
                 padding: const EdgeInsets.all(14),
                 child: Row(
@@ -376,80 +454,30 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     final totalUnread = _unreadNotifications.length;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.grey.shade100,
       appBar: AppBar(
-        title: const Text(
+      
+        title:  Text(
           'Notifications',
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            fontSize: 19,
-            color: Colors.white,
-          ),
+          style:w500_16Poppins()
         ),
-        backgroundColor: AppColors.primary,
+        backgroundColor: Colors.grey.shade100,
         elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: Colors.white,
-          indicatorWeight: 3,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white.withAlpha(178),
-          labelStyle: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-          ),
-          tabs: [
-            const Tab(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.notifications_rounded, size: 17),
-                  SizedBox(width: 6),
-                  Text('All'),
-                ],
-              ),
-            ),
-            Tab(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.mark_email_unread_rounded, size: 17),
-                  const SizedBox(width: 6),
-                  const Text('Unread'),
-                  if (totalUnread > 0) ...[
-                    const SizedBox(width: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: AppColors.error,
-                        borderRadius:
-                            BorderRadius.circular(AppRadius.pill),
-                      ),
-                      child: Text(
-                        totalUnread > 99 ? '99+' : '$totalUnread',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ],
-        ),
+        iconTheme: const IconThemeData(color: Colors.black),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildNotificationsList(_allNotifications),
-          _buildNotificationsList(_unreadNotifications),
-        ],
-      ),
+      body: Column(
+  children: [
+    const SizedBox(height: 12),
+
+    _buildFilterBar(),
+
+    const SizedBox(height: 12),
+
+    Expanded(
+      child: _buildNotificationsList(_filteredNotifications),
+    ),
+  ],
+),
     );
   }
 }

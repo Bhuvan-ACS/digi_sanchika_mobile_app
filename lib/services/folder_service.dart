@@ -117,7 +117,7 @@ class FolderService {
           data: {
             'sharedWithId': userId,
             'permission': permission,
-            if (message != null) 'message': message,
+            'message': ?message,
           },
         );
         if (response.statusCode != 200 && response.statusCode != 201) {

@@ -32,8 +32,8 @@ class GroupSharesService {
         'allowDownload': allowDownload,
         'allowEdit': allowEdit,
         if (noExpiry == true) 'noExpiry': true,
-        if (expiryHours != null) 'expiryHours': expiryHours,
-        if (expiryDays != null) 'expiryDays': expiryDays,
+        'expiryHours': ?expiryHours,
+        'expiryDays': ?expiryDays,
       },
     );
     if (resp.statusCode != 201 && resp.statusCode != 200) return null;
@@ -50,9 +50,9 @@ class GroupSharesService {
     final resp = await _dio.patch(
       '$_sharesBasePath/documents/group/$groupShareId',
       data: {
-        if (permission != null) 'permission': permission,
-        if (allowDownload != null) 'allowDownload': allowDownload,
-        if (allowEdit != null) 'allowEdit': allowEdit,
+        'permission': ?permission,
+        'allowDownload': ?allowDownload,
+        'allowEdit': ?allowEdit,
       },
     );
     return resp.statusCode == 200;
@@ -75,9 +75,9 @@ class GroupSharesService {
       '$_sharesBasePath/documents/group/$groupShareId/override',
       data: {
         'userId': userId,
-        if (permission != null) 'permission': permission,
-        if (allowDownload != null) 'allowDownload': allowDownload,
-        if (allowEdit != null) 'allowEdit': allowEdit,
+        'permission': ?permission,
+        'allowDownload': ?allowDownload,
+        'allowEdit': ?allowEdit,
       },
     );
     return resp.statusCode == 200;
@@ -111,8 +111,8 @@ class GroupSharesService {
         'allowDownload': allowDownload,
         'allowEdit': allowEdit,
         if (noExpiry == true) 'noExpiry': true,
-        if (expiryHours != null) 'expiryHours': expiryHours,
-        if (expiryDays != null) 'expiryDays': expiryDays,
+        'expiryHours': ?expiryHours,
+        'expiryDays': ?expiryDays,
       },
     );
     if (resp.statusCode != 201 && resp.statusCode != 200) return null;
@@ -129,9 +129,9 @@ class GroupSharesService {
     final resp = await _dio.patch(
       '$_sharesBasePath/folders/group/$groupShareId',
       data: {
-        if (permission != null) 'permission': permission,
-        if (allowDownload != null) 'allowDownload': allowDownload,
-        if (allowEdit != null) 'allowEdit': allowEdit,
+        'permission': ?permission,
+        'allowDownload': ?allowDownload,
+        'allowEdit': ?allowEdit,
       },
     );
     return resp.statusCode == 200;
@@ -154,9 +154,9 @@ class GroupSharesService {
       '$_sharesBasePath/folders/group/$groupShareId/override',
       data: {
         'userId': userId,
-        if (permission != null) 'permission': permission,
-        if (allowDownload != null) 'allowDownload': allowDownload,
-        if (allowEdit != null) 'allowEdit': allowEdit,
+        'permission': ?permission,
+        'allowDownload': ?allowDownload,
+        'allowEdit': ?allowEdit,
       },
     );
     return resp.statusCode == 200;

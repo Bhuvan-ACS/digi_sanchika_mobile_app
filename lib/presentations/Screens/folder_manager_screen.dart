@@ -124,7 +124,7 @@ class _FolderManagerScreenState extends State<FolderManagerScreen> {
 
       if (createResult['success'] == true) {
         _didChange = true;
-        _showSuccessSnackBar('Folder "${result}" created successfully');
+        _showSuccessSnackBar('Folder "$result" created successfully');
         await _loadFolderTree(showLoading: false);
       } else {
         _showErrorSnackBar(createResult['error'] ?? 'Failed to create folder');
@@ -176,7 +176,7 @@ class _FolderManagerScreenState extends State<FolderManagerScreen> {
               borderRadius: BorderRadius.circular(10),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF2B41BD).withOpacity(0.3),
+                  color: const Color(0xFF2B41BD).withValues(alpha: 0.3),
                   blurRadius: 8,
                   offset: const Offset(0, 3),
                 ),
@@ -325,7 +325,7 @@ class _FolderManagerScreenState extends State<FolderManagerScreen> {
               borderRadius: BorderRadius.circular(10),
             ),
             elevation: 2,
-            shadowColor: const Color(0xFF2B41BD).withOpacity(0.3),
+            shadowColor: const Color(0xFF2B41BD).withValues(alpha: 0.3),
           ),
         ),
       ],
@@ -352,7 +352,7 @@ class _FolderManagerScreenState extends State<FolderManagerScreen> {
                 borderRadius: BorderRadius.circular(10),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.red.withOpacity(0.3),
+                    color: Colors.red.withValues(alpha: 0.3),
                     blurRadius: 8,
                     offset: const Offset(0, 3),
                   ),
@@ -454,7 +454,7 @@ class _FolderManagerScreenState extends State<FolderManagerScreen> {
                 borderRadius: BorderRadius.circular(10),
               ),
               elevation: 2,
-              shadowColor: Colors.red.withOpacity(0.3),
+              shadowColor: Colors.red.withValues(alpha: 0.3),
             ),
             child: const Row(
               mainAxisSize: MainAxisSize.min,
@@ -955,7 +955,7 @@ class _FolderManagerScreenState extends State<FolderManagerScreen> {
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.05),
+                              color: Colors.black.withValues(alpha: 0.05),
                               blurRadius: 20,
                               offset: const Offset(0, -4),
                             ),
@@ -1020,7 +1020,7 @@ class _FolderManagerScreenState extends State<FolderManagerScreen> {
               width: 72,
               height: 72,
               decoration: BoxDecoration(
-                color: const Color(0xFF2B41BD).withOpacity(0.08),
+                color: const Color(0xFF2B41BD).withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: const Icon(
@@ -1061,7 +1061,7 @@ class _FolderManagerScreenState extends State<FolderManagerScreen> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF2B41BD).withOpacity(0.08),
+            color: const Color(0xFF2B41BD).withValues(alpha: 0.08),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -1129,7 +1129,7 @@ class _FolderManagerScreenState extends State<FolderManagerScreen> {
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: [
                   BoxShadow(
-                    color: color.withOpacity(0.3),
+                    color: color.withValues(alpha: 0.3),
                     blurRadius: 8,
                     offset: const Offset(0, 3),
                   ),
@@ -1283,11 +1283,11 @@ class _FolderManagerScreenState extends State<FolderManagerScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
             color: enabled
-                ? color.withOpacity(0.05)
-                : Colors.grey.withOpacity(0.06),
+                ? color.withValues(alpha: 0.05)
+                : Colors.grey.withValues(alpha: 0.06),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: enabled ? color.withOpacity(0.1) : Colors.grey.shade200,
+              color: enabled ? color.withValues(alpha: 0.1) : Colors.grey.shade200,
             ),
           ),
           child: Row(
@@ -1309,8 +1309,4 @@ class _FolderManagerScreenState extends State<FolderManagerScreen> {
     );
   }
 
-  Future<void> _renameFolder(FolderTreeNode node) async {
-    // Implement rename functionality
-    _showSuccessSnackBar('Rename functionality coming soon');
-  }
 }

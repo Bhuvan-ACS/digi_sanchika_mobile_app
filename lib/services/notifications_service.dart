@@ -6,12 +6,12 @@ import 'package:flutter/foundation.dart';
 class NotificationsService {
   Dio get _dio => ApiClient.instance.dio;
 
-  Future<List<AppNotification>> fetchNotifications({int? offset, int? limit}) async {
+  Future<NotificationResponse> fetchNotifications({int? offset, int? limit}) async {
     final response = await _dio.get(
       '/notifications',
       queryParameters: {
-        if (offset != null) 'offset': offset,
-        if (limit != null) 'limit': limit,
+        'offset': ?offset,
+        'limit': ?limit,
       },
     );
     final status = response.statusCode ?? 0;
@@ -31,12 +31,10 @@ class NotificationsService {
     final items = data is List
         ? data
         : (data['items'] ?? data['notifications'] ?? const []);
-    if (items is! List) return const [];
 
-    return items
-        .whereType<Map>()
-        .map((n) => AppNotification.fromJson(Map<String, dynamic>.from(n)))
-        .toList();
+    return NotificationResponse.fromJson(
+    Map<String, dynamic>.from(response.data),
+  );
   }
 
   Future<bool> markRead(String id) async {

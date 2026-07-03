@@ -1,6 +1,3 @@
-// screens/shared_me.dart
-// ignore: unused_import
-// ignore_for_file: unused_field, unused_import, unnecessary_brace_in_string_interps, unused_element
 
 import 'dart:convert';
 import 'dart:async';
@@ -16,11 +13,8 @@ import 'package:digi_sanchika/services/api_service.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
-import 'package:open_filex/open_filex.dart';
 import 'package:digi_sanchika/services/document_opener_service.dart';
-import 'package:digi_sanchika/presentations/Screens/shared_folder_screen.dart';
 import 'package:digi_sanchika/widgets/dismiss_keyboard.dart';
-import 'package:digi_sanchika/services/my_documents_service.dart';
 import 'package:digi_sanchika/services/shared_folders_service.dart';
 import 'package:digi_sanchika/services/download_requests_service.dart';
 import 'package:digi_sanchika/widgets/share_access_sheet.dart';
@@ -59,22 +53,21 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
 
   // NEW: Layout mode and file type filter variables
   AppViewMode _currentViewMode = AppViewMode.list;
-  bool _showFileTypeFilter = false;
   String _selectedFileType = 'All';
-  List<String> _availableFileTypes = [
+  List<String> availableFileTypes = [
     'All',
   ]; // Will be populated from documents
 
   // NEW: Collapsible states for document cards
-  Map<String, bool> _expandedStates = {};
+  final Map<String, bool> _expandedStates = {};
 
   void _clearExpandedStates() {
     _expandedStates.clear();
   }
 
   // Stats
-  int _totalDocuments = 0;
-  int _totalFolders = 0;
+  int totalDocuments = 0;
+  int totalFolders = 0;
 
   Future<void> _hydrateSharedFolderCounts(List<SharedFolder> folders) async {
     if (folders.isEmpty) return;
@@ -200,9 +193,9 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
         _sharedDocuments = documents;
         _filteredDocuments = documents;
         _sharedFolders = folders;
-        _totalDocuments = documents.length;
-        _totalFolders = folders.length;
-        _availableFileTypes = ['All', ...fileTypes];
+        totalDocuments = documents.length;
+        totalFolders = folders.length;
+        availableFileTypes = ['All', ...fileTypes];
         _isLoading = false;
       });
 print('SharedFolder JSON: $json');
@@ -252,9 +245,9 @@ print('Folders count: ${folders.length}');
         setState(() {
           _sharedDocuments = localDocs;
           _filteredDocuments = localDocs;
-          _totalDocuments = localDocs.length;
-          _totalFolders = 0;
-          _availableFileTypes = ['All', ...fileTypes];
+          totalDocuments = localDocs.length;
+          totalFolders = 0;
+        availableFileTypes = ['All', ...fileTypes];
           _hasError = true;
           _errorMessage = 'Using cached data. No internet connection.';
           _isLoading = false;
@@ -400,21 +393,7 @@ print('Folders count: ${folders.length}');
     return Directory.current;
   }
 
-  /// Get FileProvider URI for Android
-  String _getFileProviderUri(String filePath) {
-    if (Platform.isAndroid) {
-      try {
-        final file = File(filePath);
-        if (file.existsSync()) {
-          final fileName = file.path.split('/').last;
-          return 'content://com.example.digi_sanchika.fileprovider/files/$fileName';
-        }
-      } catch (e) {
-        debugPrint('Error creating FileProvider URI: $e');
-      }
-    }
-    return filePath;
-  }
+ 
 
   /// Download a document (with auto-open like My Documents)
   Future<void> _downloadDocument(Document document) async {
@@ -572,41 +551,7 @@ print('Folders count: ${folders.length}');
           );
           return;
 
-          // Auto-open the downloaded file (same as My Documents)
-          try {
-            final uriToOpen = Platform.isAndroid
-                ? _getFileProviderUri(filePath)
-                : filePath;
-
-            debugPrint('Opening with: $uriToOpen');
-
-            final openResult = await OpenFilex.open(uriToOpen);
-
-            if (openResult.type != ResultType.done) {
-              debugPrint('⚠ Could not open file: ${openResult.message}');
-
-              // Fallback: Try normal path
-              if (Platform.isAndroid) {
-                try {
-                  await OpenFilex.open(filePath);
-                } catch (e) {
-                  debugPrint('⚠ Fallback also failed: $e');
-                }
-              }
-              _showSnackBar(
-                'File downloaded. Could not open automatically.',
-                Colors.orange,
-              );
-            } else {
-              debugPrint('File opened successfully');
-            }
-          } catch (e) {
-            debugPrint('⚠ Error opening file: $e');
-            _showSnackBar(
-              'File downloaded. Use a compatible app to open it.',
-              Colors.blue,
-            );
-          }
+         
         } else {
           throw Exception('Failed to save file to disk');
         }
@@ -952,13 +897,7 @@ print('Folders count: ${folders.length}');
     await VersionHistoryDialog.show(context, document: document);
   }
 
-  String _formatDate(dynamic date) {
-    try {
-      return DateTime.parse(date.toString()).toString().split(' ')[0];
-    } catch (e) {
-      return date.toString();
-    }
-  }
+
 
   // Format date to DD-MM-YYYY (Same as Document Library)
   String _formatDateDDMMYYYY(dynamic date) {
@@ -1077,97 +1016,8 @@ print('Folders count: ${folders.length}');
     );
   }
 
-  /// Show shared folders dialog
-  void _showSharedFolders() {
-    showDialog(
-      context: context,
-      builder: (context) {
-        final r = context.r;
-        return AlertDialog(
-          title: Row(
-            children: [
-              const Icon(Icons.folder_shared, color: Colors.indigo),
-              SizedBox(width: r.p(10)),
-              Text('Shared Folders (${_sharedFolders.length})'),
-            ],
-          ),
-          content: _sharedFolders.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.folder_off, size: r.sp(60), color: Colors.grey),
-                      SizedBox(height: r.p(10)),
-                      const Text('No shared folders'),
-                    ],
-                  ),
-                )
-              : SizedBox(
-                  width: double.maxFinite,
-                  height: MediaQuery.of(context).size.height * 0.6,
-                  child: ListView.builder(
-                    itemCount: _sharedFolders.length,
-                    itemBuilder: (context, index) {
-                      final folder = _sharedFolders[index];
-                      return Card(
-                        margin: EdgeInsets.symmetric(vertical: r.p(4)),
-                        child: ListTile(
-                          leading: const Icon(Icons.folder, color: Colors.amber),
-                          title: Text(
-                            folder.name,
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Owner: ${folder.owner}'),
-                              Text('Created: ${folder.createdAt}'),
-                              if (folder.itemCount >= 0)
-                                Text('${folder.itemCount} item${folder.itemCount == 1 ? '' : 's'}'),
-                            ],
-                          ),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.arrow_forward),
-                            onPressed: () {
-                              Navigator.pop(context);
-                              _openSharedFolder(folder);
-                            },
-                          ),
-                          onTap: () {
-                            Navigator.pop(context);
-                            _openSharedFolder(folder);
-                          },
-                        ),
-                      );
-                    },
-                  ),
-                ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Close'),
-            ),
-          ],
-        );
-      },
-    );
-  }
+ 
 
-  /// Open a shared folder (navigate to FolderScreen)
-  void _openSharedFolder(SharedFolder folder) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => SharedFolderScreen(
-          folderId: folder.id,
-          folderName: folder.name,
-          userName: folder.owner,
-        ),
-      ),
-    );
-  }
-
-  // ============ FEATURE 1: COLLAPSIBLE DOCUMENT CARDS ============
 
   // Build document item card with COLLAPSIBLE functionality
   Widget _buildDocumentCard(BuildContext context, Document document, int index,) {
@@ -1187,7 +1037,7 @@ print("document upload date: ${document.name} - ${document.uploadDate}");
       borderRadius: BorderRadius.circular(r.p(12)),
       child: Card(
         margin: EdgeInsets.symmetric(horizontal: r.p(16), vertical: r.p(8)),
-        elevation: 2,
+        elevation: 0.5,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(r.p(12))),
         child: Padding(
           padding: EdgeInsets.all(r.p(16)),
@@ -1206,7 +1056,7 @@ print("document upload date: ${document.name} - ${document.uploadDate}");
                     ),
                     child: Icon(iconData, color: color, size: r.sp(32)),
                   ),
-                  SizedBox(width: r.p(16)),
+                 width10,
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1227,7 +1077,7 @@ print("document upload date: ${document.name} - ${document.uploadDate}");
                                     maxLines: isExpanded ? 2 : 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
-                                  height5,
+                            
                                       Text(
                           'Type: ${document.type} • $formattedDate',
                           style: w400_14Poppins(color: Colors.grey.shade700),
@@ -1361,16 +1211,16 @@ print("document upload date: ${document.name} - ${document.uploadDate}");
                        Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.schedule, size: r?.sp(16) ?? 16, color: Colors.grey.shade600),
-          SizedBox(width: r?.p(12) ?? 12),
+          Icon(Icons.schedule, size: r.sp(16), color: Colors.grey.shade600),
+          SizedBox(width: r.p(12)),
           SizedBox(
-            width: r?.p(100) ?? 100,
+            width: r.p(100) ,
             child: Text(
               "Expires in: ",
               style: w400_14Poppins(color: Colors.black87),
             ),
           ),
-          SizedBox(width: r?.p(8) ?? 8),
+          SizedBox(width: r.p(8)),
           Expanded(
             child: Text(
               _getExpiryText(document.expiresAt),
@@ -1671,7 +1521,7 @@ Color _getExpiryColor(String? expiryDate) {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Container(
-                padding: EdgeInsets.all(columns == 2 ? r.p(12) : r.p(8)),
+                padding: EdgeInsets.all(columns == 2 ? r.p(8) : r.p(8)),
                 decoration: BoxDecoration(
                   color: color.withAlpha(20),
                   borderRadius: BorderRadius.circular(r.p(12)),
@@ -1731,7 +1581,7 @@ Color _getExpiryColor(String? expiryDate) {
           onTap: () => _handleDocumentDoubleTap(document),
           borderRadius: BorderRadius.circular(r.p(6)),
           child: Container(
-            padding: EdgeInsets.symmetric(horizontal: r.p(12), vertical: r.p(10)),
+            padding: EdgeInsets.symmetric(horizontal: r.p(8), vertical: r.p(8)),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(r.p(6)),
               border: Border.all(color: Colors.grey.shade100, width: 1),
@@ -1743,7 +1593,7 @@ Color _getExpiryColor(String? expiryDate) {
                   color: _getFileColor(document.type),
                   size: r.sp(18),
                 ),
-                SizedBox(width: r.p(12)),
+               width10,
                 Expanded(
                   child: Text(
                     document.name,
@@ -1778,7 +1628,7 @@ Color _getExpiryColor(String? expiryDate) {
         onTap: () => _handleDocumentDoubleTap(document),
         borderRadius: BorderRadius.circular(r.p(12)),
         child: Container(
-          padding: EdgeInsets.all(r.p(12)),
+          padding: EdgeInsets.all(r.p(8)),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
@@ -1787,7 +1637,7 @@ Color _getExpiryColor(String? expiryDate) {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Container(
-                    padding: EdgeInsets.all(r.p(10)),
+                    padding: EdgeInsets.all(r.p(8)),
                     decoration: BoxDecoration(
                       color: color.withAlpha(20),
                       borderRadius: BorderRadius.circular(r.p(10)),
@@ -2018,44 +1868,7 @@ Color _getExpiryColor(String? expiryDate) {
 
   // ============ FEATURE 3: FILE TYPE FILTER ============
 
-  /// Build file type filter dropdown
-  Widget _buildFileTypeFilter(ResponsiveHelper r) {
-    return PopupMenuButton<String>(
-      tooltip: 'Filter by File Type',
-      icon: Icon(
-        Icons.filter_alt,
-        color: _selectedFileType != 'All' ? Colors.blue : Colors.indigo,
-        size: r.sp(24),
-      ),
-      onSelected: (String type) {
-        setState(() {
-          _selectedFileType = type;
-          _filterDocuments(fileType: type);
-        });
-      },
-      itemBuilder: (BuildContext context) {
-        final r = context.r;
-        return <PopupMenuEntry<String>>[
-          for (String type in _availableFileTypes)
-            PopupMenuItem<String>(
-              value: type,
-              child: Row(
-                children: [
-                  if (type == 'All')
-                    Icon(Icons.all_inclusive, color: Colors.grey)
-                  else
-                    Icon(_getFileIcon(type), color: _getFileColor(type)),
-                  SizedBox(width: r.p(8)),
-                  Text(type),
-                  if (_selectedFileType == type)
-                    Icon(Icons.check, color: Colors.green, size: r.sp(16)),
-                ],
-              ),
-            ),
-        ];
-      },
-    );
-  }
+ 
 
   /// Show file type filter badge
   Widget _buildFileTypeBadge(ResponsiveHelper r) {
@@ -2063,7 +1876,7 @@ Color _getExpiryColor(String? expiryDate) {
 
     return Container(
       margin: EdgeInsets.only(left: r.p(8)),
-      padding: EdgeInsets.symmetric(horizontal: r.p(10), vertical: r.p(4)),
+      padding: EdgeInsets.symmetric(horizontal: r.p(8), vertical: r.p(4)),
       decoration: BoxDecoration(
         color: Colors.blue.shade50,
         borderRadius: BorderRadius.circular(r.p(16)),
@@ -2147,23 +1960,6 @@ Color _getExpiryColor(String? expiryDate) {
     );
   }
 
-  /// Format file size
-  String _formatFileSize(String size) {
-    try {
-      final cleanSize = size.replaceAll(RegExp(r'[^0-9]'), '');
-      final bytes = int.tryParse(cleanSize) ?? 0;
-      if (bytes == 0) return '0 B';
-      if (bytes < 1024) return '$bytes B';
-      if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-      if (bytes < 1024 * 1024 * 1024) {
-        return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-      }
-      return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
-    } catch (e) {
-      debugPrint('Error formatting file size: $e for input: $size');
-      return size;
-    }
-  }
 
   /// Build empty state widget
   Widget _buildEmptyState(ResponsiveHelper r) {
@@ -2251,7 +2047,7 @@ Color _getExpiryColor(String? expiryDate) {
             // Search and stats section
             Container(
               padding: EdgeInsets.all(r.p(16)),
-              color: Colors.grey.shade50,
+        
               child: Column(
                 children: [
                 // Search bar with filters
@@ -2303,13 +2099,8 @@ Color _getExpiryColor(String? expiryDate) {
                       ),
                     ),
                     SizedBox(width: r.p(10)),
-                    // File Type Filter
-                    // _buildFileTypeFilter(),
-                    // SizedBox(width: r.p(8)),
-                    // Layout Selector
                     _buildLayoutSelector(),
                     SizedBox(width: r.p(12)),
-                    // Folders button - Only show if needed
                   
                   ],
                 ),
@@ -2346,7 +2137,7 @@ Color _getExpiryColor(String? expiryDate) {
                       color: Colors.indigo,
                       strokeWidth: 2,
                     ),
-                    SizedBox(height: r.p(16)),
+                height10,
                     Text(
                       'Loading shared documents...',
                       style: TextStyle(color: Colors.grey.shade600),

@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -10,22 +9,8 @@ import 'package:digi_sanchika/services/api_client.dart';
 class UploadService {
   static Dio get _dio => ApiClient.instance.dio;
 
-  static bool _isEffectivelyEmptyJsonList(String value) {
-    final trimmed = value.trim();
-    if (trimmed.isEmpty) return true;
-    return trimmed == '[]' || trimmed.toLowerCase() == 'null';
-  }
 
-  static List<dynamic>? _tryDecodeJsonList(String value) {
-    try {
-      final trimmed = value.trim();
-      if (trimmed.isEmpty) return null;
-      final decoded = jsonDecode(trimmed);
-      return decoded is List ? decoded : null;
-    } catch (_) {
-      return null;
-    }
-  }
+
 
   static Dio _rawDio() {
     // Raw client for presigned S3/MinIO PUTs (no auth interceptors/cookies).
@@ -363,8 +348,9 @@ class UploadService {
       _ulog(
         'trace=$traceId ERROR dio-exception status=${e.response?.statusCode} path=${e.requestOptions.path} msg=${e.message}',
       );
-      if (e.response?.data != null)
+      if (e.response?.data != null) {
         _ulog('trace=$traceId ERROR response data=${e.response?.data}');
+      }
       return {
         'success': false,
         'message': 'Upload error: ${e.message}',
@@ -656,8 +642,9 @@ class UploadService {
       _ulog(
         'trace=$traceId ERROR multi dio-exception status=${e.response?.statusCode} path=${e.requestOptions.path} msg=${e.message}',
       );
-      if (e.response?.data != null)
+      if (e.response?.data != null) {
         _ulog('trace=$traceId ERROR response data=${e.response?.data}');
+      }
       return {
         'success': false,
         'message': 'Upload error: ${e.message}',

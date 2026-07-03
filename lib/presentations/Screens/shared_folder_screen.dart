@@ -6,9 +6,7 @@ import 'package:digi_sanchika/services/shared_browse_service.dart';
 import 'package:digi_sanchika/models/document.dart';
 import 'package:digi_sanchika/services/api_service.dart';
 import 'package:digi_sanchika/services/document_opener_service.dart';
-import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:digi_sanchika/services/shared_documents_service.dart';
 import 'package:path/path.dart' as path;
 import 'dart:io';
 import 'package:flutter/services.dart';
@@ -51,13 +49,12 @@ class _SharedFolderScreenState extends State<SharedFolderScreen> {
 
   final TextEditingController _searchController = TextEditingController();
   final DocumentOpenerService _documentOpener = DocumentOpenerService();
-  final SharedDocumentsService _sharedService = SharedDocumentsService();
 
   // NEW: Layout mode, file type filter, and collapsible states
   SharedFolderViewMode _currentViewMode = SharedFolderViewMode.list;
   String _selectedFileType = 'All';
   List<String> _availableFileTypes = ['All'];
-  Map<String, bool> _expandedStates = {};
+  final Map<String, bool> _expandedStates = {};
 
   @override
   void initState() {
@@ -276,30 +273,7 @@ class _SharedFolderScreenState extends State<SharedFolderScreen> {
           );
           return;
 
-          try {
-            final uriToOpen = Platform.isAndroid
-                ? _getFileProviderUri(filePath)
-                : filePath;
-            final openResult = await OpenFilex.open(uriToOpen);
-
-            if (openResult.type != ResultType.done && Platform.isAndroid) {
-              try {
-                await OpenFilex.open(filePath);
-              } catch (e) {
-                debugPrint('Fallback also failed: $e');
-              }
-              _showSnackBar(
-                'File downloaded. Could not open automatically.',
-                Colors.orange,
-              );
-            }
-          } catch (e) {
-            debugPrint('Error opening file: $e');
-            _showSnackBar(
-              'File downloaded. Use a compatible app to open it.',
-              Colors.blue,
-            );
-          }
+        
         } else {
           throw Exception('Failed to save file to disk');
         }
@@ -325,20 +299,7 @@ class _SharedFolderScreenState extends State<SharedFolderScreen> {
     return Directory.current;
   }
 
-  String _getFileProviderUri(String filePath) {
-    if (Platform.isAndroid) {
-      try {
-        final file = File(filePath);
-        if (file.existsSync()) {
-          final fileName = file.path.split('/').last;
-          return 'content://com.example.digi_sanchika.fileprovider/files/$fileName';
-        }
-      } catch (e) {
-        debugPrint('Error creating FileProvider URI: $e');
-      }
-    }
-    return filePath;
-  }
+ 
 
   void _showFileContent(List<int> fileBytes, String filename) {
     try {
@@ -1832,8 +1793,9 @@ class _SharedFolderScreenState extends State<SharedFolderScreen> {
       if (bytes == 0) return '0 B';
       if (bytes < 1024) return '$bytes B';
       if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-      if (bytes < 1024 * 1024 * 1024)
+      if (bytes < 1024 * 1024 * 1024) {
         return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+      }
       return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
     } catch (e) {
       return size;
@@ -1928,43 +1890,7 @@ class _SharedFolderScreenState extends State<SharedFolderScreen> {
     );
   }
 
-  void _showDownloadRestrictedPopup(Document document) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        icon: const Icon(Icons.download_outlined, size: 48, color: Colors.blue),
-        title: const Text('Download Document'),
-        content: const Text(
-          'Download requires approval. Please request access from the document owner.',
-          textAlign: TextAlign.center,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              final service = DownloadRequestsService();
-              final result = await service.createRequest(
-                documentId: document.id,
-                reason: 'Requesting download access',
-              );
-              if (!mounted) return;
-              _showSnackBar(
-                result['success'] == true
-                    ? 'Download request submitted'
-                    : (result['message'] ?? 'Request failed'),
-                result['success'] == true ? Colors.green : Colors.red,
-              );
-            },
-            child: const Text('Request Download'),
-          ),
-        ],
-      ),
-    );
-  }
+  
 
   @override
   Widget build(BuildContext context) {

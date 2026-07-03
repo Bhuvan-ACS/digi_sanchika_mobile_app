@@ -156,7 +156,7 @@ class DownloadAccessService {
         return {'success': false, 'requiresApproval': true};
       }
 
-      return {'success': false, 'error': 'Download not allowed (${status})'};
+      return {'success': false, 'error': 'Download not allowed ($status)'};
     } catch (e) {
       return {'success': false, 'error': e.toString()};
     }

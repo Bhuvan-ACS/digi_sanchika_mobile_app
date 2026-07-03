@@ -13,7 +13,7 @@ class FolderTreeService {
   DateTime? _lastFetchTime;
   static const _cacheDuration = Duration(minutes: 5);
 
-  List<FolderTreeNode> _navigationHistory = [];
+  final List<FolderTreeNode> _navigationHistory = [];
 
   List<FolderTreeNode>? get cachedTree => _cachedTree;
   FolderTreeNode? get currentNode => _currentNode;
@@ -149,7 +149,7 @@ class FolderTreeService {
 
       final id = rawId.toString();
       final rawParentId = map['parent_id'] ?? map['parentId'];
-      final parentId = rawParentId == null ? null : rawParentId.toString();
+      final parentId = rawParentId?.toString();
       final node = FolderTreeNode(
         id: id,
         name: map['name']?.toString() ?? 'Unnamed',

@@ -1,5 +1,8 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:digi_sanchika/presentations/Screens/custom_bottom_bar.dart';
+import 'package:digi_sanchika/presentations/Screens/dashboard_screen.dart';
+import 'package:digi_sanchika/services/notifications_service.dart';
 import 'package:digi_sanchika/utils/app_fonts.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -11,7 +14,6 @@ import 'package:digi_sanchika/local_storage.dart';
 import 'package:digi_sanchika/models/document.dart';
 import 'package:digi_sanchika/models/folder.dart';
 import 'package:digi_sanchika/services/api_service.dart';
-import 'package:digi_sanchika/services/token_storage.dart';
 import 'package:digi_sanchika/services/my_documents_service.dart';
 import 'package:digi_sanchika/presentations/Screens/upload_document.dart';
 import 'package:digi_sanchika/presentations/Screens/folder_screen.dart';
@@ -22,7 +24,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:digi_sanchika/presentations/Screens/profile_screen.dart';
 import 'package:digi_sanchika/presentations/Screens/notifications_screen.dart';
 import 'package:digi_sanchika/services/document_opener_service.dart';
-import 'package:digi_sanchika/presentations/Screens/document_tools_screen.dart';
 import 'package:digi_sanchika/services/favorites_service.dart';
 import 'package:digi_sanchika/services/download_requests_service.dart';
 import 'package:digi_sanchika/services/download_access_service.dart';
@@ -64,23 +65,21 @@ class _HomePageState extends State<HomePage>
   List<Folder> folders = [];
   bool _showRecent = false;
   String _docTypeFilter = 'All'; // 'All', 'PDF', 'Docs', 'Sheets'
-  bool _showFolderDropdown = false;
-  bool _showDocumentsDropdown = true;
   bool _isLoading = true;
   bool _isDownloading = false;
-  bool _isUploading = false;
+  final bool _isUploading = false;
   bool _showProfileDrawer = false;
-  String? _currentFolderId;
-  Document? _selectedDocument;
-  String? _downloadingFileName;
+  Document? selectedDocument;
+  String? downloadingFileName;
 
-  Map<String, bool> _expandedStates = {};
+  final Map<String, bool> _expandedStates = {};
 
   // API search state
   List<Document>? _apiSearchResults;
   bool _isSearching = false;
   String? _searchError;
   String _lastSemanticQuery = '';
+  int currentIndex = 0;
 
   final FavoritesService _favoritesService = FavoritesService();
   final Map<String, String> _favoriteDocumentMap = {};
@@ -88,7 +87,6 @@ class _HomePageState extends State<HomePage>
 
   // Add these variables for layout modes
   AppViewMode _currentViewMode = AppViewMode.list;
-  bool _showLayoutOptions = false;
   String? _effectiveUserName;
   String? _effectiveUserEmail;
 
@@ -109,6 +107,7 @@ class _HomePageState extends State<HomePage>
     _loadFavorites();
     _loadStoredUserProfile();
 
+  _loadUnreadCount();
     _tabController.addListener(() {
       _dismissKeyboard();
       if (mounted) {
@@ -308,9 +307,6 @@ class _HomePageState extends State<HomePage>
     return _favoriteDocumentMap.containsKey(documentId);
   }
 
-  bool _isFavoriteFolder(String folderId) {
-    return _favoriteFolderMap.containsKey(folderId);
-  }
 
   Future<void> _toggleFavorite(Document document) async {
     final isFav = _isFavorite(document.id);
@@ -363,57 +359,7 @@ class _HomePageState extends State<HomePage>
     }
   }
 
-  Future<void> _toggleFavoriteFolder(Folder folder) async {
-    final isFav = _isFavoriteFolder(folder.id);
-    final previousId = _favoriteFolderMap[folder.id];
-
-    setState(() {
-      if (isFav) {
-        _favoriteFolderMap.remove(folder.id);
-      } else {
-        _favoriteFolderMap[folder.id] = 'pending';
-      }
-    });
-
-    bool ok = false;
-    if (isFav) {
-      ok = await _favoritesService.removeFavorite(
-        entityId: folder.id,
-        entityType: 'folder',
-      );
-    } else {
-      ok = await _favoritesService.addFavorite(
-        entityId: folder.id,
-        entityType: 'folder',
-      );
-    }
-
-    if (ok) {
-      if (!isFav) {
-        _showTopMessage('Folder added to favorites');
-      }
-    } else {
-      if (!mounted) return;
-      setState(() {
-        if (isFav) {
-          if (previousId != null) {
-            _favoriteFolderMap[folder.id] = previousId;
-          }
-        } else {
-          _favoriteFolderMap.remove(folder.id);
-        }
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            isFav ? 'Failed to remove favorite' : 'Failed to add favorite',
-          ),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
+ 
   Future<void> _refreshData() async {
     await ApiService.checkConnection();
     if (ApiService.isConnected) {
@@ -422,7 +368,7 @@ class _HomePageState extends State<HomePage>
     } else {
       await _loadDataFromLocalStorage();
       if (mounted) {
-        final messenger = ScaffoldMessenger.maybeOf(this.context);
+        final messenger = ScaffoldMessenger.maybeOf(context);
         messenger?.showSnackBar(
           const SnackBar(
             content: Text('You\'re offline. Showing saved data'),
@@ -883,67 +829,9 @@ class _HomePageState extends State<HomePage>
     await LocalStorageService.addDocument(document, isPublic: isPublic);
   }
 
-  void _addNewFolder(String folderName) {
-    if (folderName.isEmpty) return;
+  
 
-    setState(() {
-      folders.add(
-        Folder(
-          name: folderName,
-          id: 'folder_${DateTime.now().millisecondsSinceEpoch}',
-          documents: [],
-          createdAt: DateTime.now(),
-          owner: _displayUserName,
-        ),
-      );
-    });
-  }
-
-  Future<void> _createFolderInBackend(String folderName) async {
-    if (!ApiService.isConnected) {
-      _addNewFolder(folderName);
-      return;
-    }
-
-    try {
-      final result = await MyDocumentsService.createFolder(
-        folderName: folderName,
-        parentFolderId: _currentFolderId,
-      );
-
-      if (result['success'] == true) {
-        _addNewFolder(folderName);
-        _refreshData();
-      } else {
-        throw Exception(result['error']);
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        print('WARN Document load failed');
-      }
-      _addNewFolder(folderName);
-    }
-  }
-
-  Future<Map<String, String>> _createAuthHeaders() async {
-    final headers = <String, String>{
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    };
-
-    try {
-      final token = await TokenStorage.getAccessToken();
-      if (token != null && token.isNotEmpty) {
-        headers['Authorization'] = 'Bearer ' + token;
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        print('WARN Document load failed');
-      }
-    }
-
-    return headers;
-  }
+ 
 
   Future<void> _deleteFolder(int index) async {
     if (index >= 0 && index < folders.length) {
@@ -1049,7 +937,7 @@ class _HomePageState extends State<HomePage>
 
     setState(() {
       _isDownloading = true;
-      _downloadingFileName = document.name;
+      downloadingFileName = document.name;
     });
 
     try {
@@ -1100,19 +988,11 @@ class _HomePageState extends State<HomePage>
     } finally {
       setState(() {
         _isDownloading = false;
-        _downloadingFileName = null;
+        downloadingFileName = null;
       });
     }
   }
 
-  void _openDocumentTools(Document document) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => DocumentToolsScreen(document: document),
-      ),
-    );
-  }
 
   Future<Directory> getDownloadDirectory() async {
     if (Platform.isAndroid) {
@@ -1123,23 +1003,7 @@ class _HomePageState extends State<HomePage>
     return Directory.current;
   }
 
-  String _getFileProviderUri(String filePath) {
-    if (Platform.isAndroid) {
-      try {
-        final file = File(filePath);
-        if (file.existsSync()) {
-          final fileName = file.path.split('/').last;
-          return 'content://com.example.digi_sanchika.fileprovider/files/$fileName';
-        }
-      } catch (e) {
-        if (kDebugMode) {
-          print('WARN Document load failed');
-        }
-      }
-    }
-    return filePath;
-  }
-
+  
   Future<void> _showDocumentVersions(Document document) async {
     await VersionHistoryDialog.show(
       context,
@@ -1148,47 +1012,7 @@ class _HomePageState extends State<HomePage>
     );
   }
 
-  Future<void> _openSelectedVersion(
-    BuildContext context,
-    Document document,
-    Map<String, dynamic> version,
-  ) async {
-    setState(() {
-      _isDownloading = true;
-    });
-
-    try {
-      final documentOpener = DocumentOpenerService();
-      final versionNumber =
-          (version['version_number'] ??
-                  version['version'] ??
-                  version['versionNumber'] ??
-                  version['number'])
-              ?.toString()
-              .trim();
-      if (versionNumber == null || versionNumber.isEmpty) {
-        throw Exception('Invalid version selected');
-      }
-
-      await documentOpener.openDocumentVersion(
-        context: context,
-        documentId: document.id,
-        versionNumber: versionNumber,
-        originalFileName: document.name,
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to open version: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    } finally {
-      setState(() {
-        _isDownloading = false;
-      });
-    }
-  }
+ 
 
   String _formatDate(dynamic date) {
     try {
@@ -1382,66 +1206,7 @@ class _HomePageState extends State<HomePage>
     }
   }
 
-  Future<void> _showDocumentDetails(Document document) async {
-    if (!ApiService.isConnected) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Cannot load details while offline'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-
-    try {
-      final result = await MyDocumentsService.getDocumentDetails(document.id);
-
-      if (result['success'] == true) {
-        final details = result['details'];
-        final name =
-            details['name'] ??
-            details['original_filename'] ??
-            details['file_name'] ??
-            'Document';
-        final mimeType = details['mime_type']?.toString();
-        final fileType = mimeType != null && mimeType.isNotEmpty
-            ? _extractFileTypeFromMime(mimeType, name.toString())
-            : _extractFileType(name.toString());
-        setState(() {
-          _selectedDocument = Document(
-            id: details['id'].toString(),
-            name: name.toString(),
-            type: fileType,
-            size:
-                '${details['file_size_bytes'] ?? details['file_size'] ?? 'Unknown'} bytes',
-            keyword: details['keywords'] ?? '',
-            uploadDate: _formatDate(
-              details['created_at'] ?? details['updated_at'],
-            ),
-            owner: details['owner']?['name'] ?? 'Unknown',
-            details: details['remarks'] ?? '',
-            classification:
-                details['classification'] ?? details['doc_class'] ?? 'internal',
-            allowDownload: details['allow_download'] ?? true,
-            sharingType:
-                (details['is_public'] == true ||
-                    details['classification']?.toString().toLowerCase() ==
-                        'public')
-                ? 'Public'
-                : 'Private',
-            folder: details['folder_path'] ?? 'Home',
-            folderId: details['folder_id']?.toString(),
-            path: name.toString(),
-            fileType: fileType,
-          );
-        });
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        print('WARN Document load failed');
-      }
-    }
-  }
+ 
 
   String _extractFileType(String filename) {
     final ext = path.extension(filename).toLowerCase();
@@ -1464,6 +1229,9 @@ class _HomePageState extends State<HomePage>
     }
   }
 
+
+int unreadCount = 0;
+
   @override
   void dispose() {
     _searchDebounce?.cancel();
@@ -1475,153 +1243,7 @@ class _HomePageState extends State<HomePage>
     super.dispose();
   }
 
-  void _showCreateFolderDialog() {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Container(
-            constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width * 0.9,
-            ),
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.indigo.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Icon(
-                        Icons.create_new_folder,
-                        color: Colors.indigo,
-                        size: 24,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Text(
-                        'Create New Folder',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                TextField(
-                  controller: _folderNameController,
-                  autofocus: true,
-                  decoration: InputDecoration(
-                    labelText: 'Folder Name',
-                    hintText: 'Enter folder name',
-                    prefixIcon: const Icon(Icons.folder, color: Colors.indigo),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(
-                        color: Colors.indigo,
-                        width: 2,
-                      ),
-                    ),
-                    filled: true,
-                    fillColor: Colors.grey.shade50,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () {
-                          _folderNameController.clear();
-                          Navigator.of(context).pop();
-                        },
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.grey.shade700,
-                          side: BorderSide(color: Colors.grey.shade300),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                        child: const Text(
-                          'Cancel',
-                          style: TextStyle(fontSize: 16),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () async {
-                          String folderName = _folderNameController.text.trim();
-                          if (folderName.isNotEmpty) {
-                            await _createFolderInBackend(folderName);
-                            _folderNameController.clear();
-                            Navigator.of(context).pop();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  'Folder "$folderName" created successfully',
-                                ),
-                                backgroundColor: Colors.green,
-                              ),
-                            );
-                          } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Please enter a folder name'),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
-                          }
-                        },
-                        icon: const Icon(Icons.add, size: 18),
-                        label: const Text(
-                          'Create',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color.fromARGB(
-                            255,
-                            28,
-                            36,
-                            121,
-                          ),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          elevation: 2,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
+ 
 
   void _showDeleteFolderConfirmation(BuildContext context, int index) {
     if (index >= 0 && index < folders.length) {
@@ -1689,29 +1311,7 @@ class _HomePageState extends State<HomePage>
     }
   }
 
-  void _showDeleteConfirmation(BuildContext context, int index) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Document'),
-        content: const Text('Are you sure you want to delete this document?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              _deleteDocument(index);
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-  }
+ 
 
   void _showDeleteOptions(BuildContext context, int index, Document document) {
     showDialog(
@@ -1750,7 +1350,7 @@ class _HomePageState extends State<HomePage>
   void _showPermanentDeleteConfirmation(Document document) {
     if (!mounted) return;
     // Use the State's active context; do not use a dialog's ctx or a stale caller context.
-    final dialogContext = this.context;
+    final dialogContext = context;
     showDialog(
       context: dialogContext,
       builder: (ctx) => AlertDialog(
@@ -1796,7 +1396,7 @@ class _HomePageState extends State<HomePage>
                     await _refreshData();
                   } catch (_) {}
                   if (!mounted) return;
-                  ScaffoldMessenger.of(this.context).showSnackBar(
+                  ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text('"${document.name}" permanently deleted'),
                       backgroundColor: Colors.red,
@@ -1804,7 +1404,7 @@ class _HomePageState extends State<HomePage>
                   );
                 } else {
                   if (!mounted) return;
-                  ScaffoldMessenger.of(this.context).showSnackBar(
+                  ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(
                         (direct['error'] ??
@@ -1818,7 +1418,7 @@ class _HomePageState extends State<HomePage>
                 }
               } catch (e) {
                 if (!mounted) return;
-                ScaffoldMessenger.of(this.context).showSnackBar(
+                ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text('Error: $e'),
                     backgroundColor: Colors.red,
@@ -1882,106 +1482,169 @@ class _HomePageState extends State<HomePage>
       MaterialPageRoute(builder: (context) => const NotificationsScreen()),
     );
   }
+Widget getTitle(int currentIndex) {
+  switch (currentIndex) {
+    case 0:
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Hello,',
+            style: w500_16Poppins(color: Colors.grey.shade700),
+          ),
+          height5,
+          Text(
+            "${_displayUserName.isNotEmpty
+                ? _displayUserName[0].toUpperCase() + _displayUserName.substring(1)
+                : ''} 👋",
+            style: w700_24Poppins(color: Colors.black),
+          ),
+          height5,
+
+        ],
+      );
+
+    case 1:
+      return  Text("My Documents",style: w700_24Poppins(),);
+
+    case 2:
+      return  Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          height5,
+          Text("Documents Hub",style: w700_24Poppins(),),
+          height5,
+          Text("Browse spaces,collections & shared work",style: w500_16Poppins(color: Colors.grey.shade500),),
+          height10,
+      
+        ],
+      );
+      
+    case 3:
+      return  Text("Profile",style: w700_24Poppins(),);
+  }
+    return const SizedBox.shrink();
+
+}
+
+Future<void> _loadUnreadCount() async {
+  try {
+    final response = await NotificationsService().fetchNotifications();
+
+    if (!mounted) return;
+
+    setState(() {
+      unreadCount = response.unreadCount;
+    });
+  } catch (e) {
+    debugPrint('Failed to load unread count: $e');
+  }
+}
+  
 
   @override
   Widget build(BuildContext context) {
     final r = context.r;
 
     final layout = AppLayout.of(context);
-    final tabViews = TabBarView(
-      controller: _tabController,
-      children: [
-        _buildMyDocumentsTab(),
-        DocumentsHub(),
-        UploadDocumentTab(
-          onDocumentUploaded: _addNewDocument,
-          folders: folders,
-          userName: _displayUserName,
-        ),
-      ],
-    );
+    final pages = [
+  DashboardScreen(  onDocumentUploaded: _addNewDocument,
+              folders: folders,
+              userName: _displayUserName,
+              onViewAll: () => setState(() => currentIndex = 1),),
+  _buildMyDocumentsTab(),
 
-    PreferredSizeWidget? tabBar;
-    if (!layout.useNavigationRail) {
-      tabBar = TabBar(
-        controller: _tabController,
-        indicatorColor: Colors.white,
-        indicatorWeight: 3,
-        labelColor: Colors.white,
-        unselectedLabelColor: Colors.white70,
-        labelStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: r.sp(12)),
-        unselectedLabelStyle: TextStyle(fontSize: r.sp(12)),
-        tabs: const [
-          Tab(text: 'My Documents'),
-          Tab(text: 'Document Hub'),
-          Tab(text: 'Upload Docs'),
-        ],
-      );
-    }
+  DocumentsHub( onViewAll: () => setState(() => currentIndex = 1),),
+ProfileScreen(
+)
+];
+  
 
-    final content = layout.useNavigationRail
-        ? Row(
-            children: [
-              NavigationRail(
-                selectedIndex: _tabController.index,
-                onDestinationSelected: (index) {
-                  setState(() {
-                    _tabController.animateTo(index);
-                  });
-                },
-                minWidth: layout.navigationRailWidth,
-                labelType: NavigationRailLabelType.all,
-                destinations: const [
-                  NavigationRailDestination(
-                    icon: Icon(Icons.folder_open_outlined),
-                    selectedIcon: Icon(Icons.folder_open),
-                    label: Text('Docs'),
-                  ),
-                  NavigationRailDestination(
-                    icon: Icon(Icons.hub_outlined),
-                    selectedIcon: Icon(Icons.hub),
-                    label: Text('Hub'),
-                  ),
-                  NavigationRailDestination(
-                    icon: Icon(Icons.upload_file_outlined),
-                    selectedIcon: Icon(Icons.upload_file),
-                    label: Text('Upload'),
-                  ),
-                ],
+   
+
+  final content = layout.useNavigationRail
+    ? Row(
+        children: [
+          NavigationRail(
+            selectedIndex: currentIndex,
+            onDestinationSelected: (index) {
+              setState(() {
+                currentIndex = index;
+              });
+            },
+            minWidth: layout.navigationRailWidth,
+            labelType: NavigationRailLabelType.all,
+            destinations: const [
+              NavigationRailDestination(
+                icon: Icon(Icons.folder_open_outlined),
+                selectedIcon: Icon(Icons.folder_open),
+                label: Text('Docs'),
               ),
-              const VerticalDivider(width: 1),
-              Expanded(child: tabViews),
+              NavigationRailDestination(
+                icon: Icon(Icons.hub_outlined),
+                selectedIcon: Icon(Icons.hub),
+                label: Text('Hub'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.upload_file_outlined),
+                selectedIcon: Icon(Icons.upload_file),
+                label: Text('Upload'),
+              ),
             ],
-          )
-        : tabViews;
+          ),
+          const VerticalDivider(width: 1),
+          Expanded(
+            child: IndexedStack(
+              index: currentIndex,
+              children: pages,
+            ),
+          ),
+        ],
+      )
+    : IndexedStack(
+        index: currentIndex,
+        children: pages,
+      );
 
     return Scaffold(
-      appBar: AppBar(
+      appBar:AppBar(
         automaticallyImplyLeading: false,
-        centerTitle: true,
-        title: Text(
-          'Digi Sanchika',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: r.sp(20),
-            color: Colors.white,
-          ),
-        ),
-        backgroundColor: const Color.fromARGB(255, 43, 65, 189),
+        title: getTitle(currentIndex),
+        backgroundColor: Colors.grey.shade100,
         elevation: 0,
         actions: [
-          IconButton(
-            onPressed: _openNotifications,
-            tooltip: 'Notifications',
-            icon: const Icon(Icons.notifications_outlined, color: Colors.white),
+          Stack(
+            children: [
+              CircleAvatar(
+                backgroundColor: Colors.white,
+                child: IconButton(
+                  onPressed: _openNotifications,
+                  tooltip: 'Notifications',
+                  icon:  Icon(Icons.notifications_outlined, color: Colors.black87),
+                
+                ),
+              ),
+               if (unreadCount > 0)
+      Positioned(
+        right: 0,
+        top: 0,
+        child: CircleAvatar(
+          radius: 8,
+          backgroundColor: Colors.red,
+          child: Text(
+            unreadCount.toString(),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 10,
+            ),
           ),
+        ),
+      ),
+            ],
+          ),
+          width10,
           GestureDetector(
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const ProfileScreen()),
-              );
-            },
+            onTap:() => setState(() => currentIndex = 3),
             child: Container(
               margin: EdgeInsets.only(right: r.p(14)),
               child: CircleAvatar(
@@ -1999,25 +1662,50 @@ class _HomePageState extends State<HomePage>
             ),
           ),
         ],
-        bottom: tabBar,
+        // bottom: tabBar,
+        
         
       ),
-
-      body: Stack(
-        children: [
-          DismissKeyboard(child: content),
-          if (_showProfileDrawer)
-            GestureDetector(
-              onTap: () {
-                setState(() {
-                  _showProfileDrawer = false;
-                });
-              },
-              child: Container(color: Colors.black.withAlpha(30)),
+ bottomNavigationBar: Padding(
+   padding: const EdgeInsets.all(8.0),
+   child: CustomBottomBar(
+      selectedIndex: currentIndex,
+      onAddPressed: (){
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => UploadDocumentTab(
+              onDocumentUploaded: _addNewDocument,
+              folders: folders,
+              userName: _displayUserName,
             ),
-          if (_showProfileDrawer) _buildProfileSidebar(),
-        ],
-      ),
+          ),
+        );
+      },
+      onItemTapped: (index) {
+        setState(() {
+          currentIndex = index;
+        });
+      },
+    ),
+ ),
+      body: Stack(
+    children: [
+      DismissKeyboard(child: content),
+      if (_showProfileDrawer)
+        GestureDetector(
+          onTap: () {
+            setState(() {
+              _showProfileDrawer = false;
+            });
+          },
+          child: Container(
+            color: Colors.black.withAlpha(30),
+          ),
+        ),
+      if (_showProfileDrawer) _buildProfileSidebar(),
+    ],
+  ),
     );
   }
 
@@ -2041,6 +1729,7 @@ class _HomePageState extends State<HomePage>
                 ),
               ),
             ),
+            
             if (totalFolderCount > 4)
               TextButton(
                 onPressed: () {
@@ -2056,9 +1745,8 @@ class _HomePageState extends State<HomePage>
               ),
           ],
         ),
-       SizedBox(
-  height: 280.h,
-  child: GridView.builder(
+        // height10,
+       GridView.builder(
     shrinkWrap: true,
     physics: const NeverScrollableScrollPhysics(),
     itemCount: displayFolders.length,
@@ -2144,12 +1832,12 @@ class _HomePageState extends State<HomePage>
                     Container(
                       padding: EdgeInsets.all(r.p(8)),
                       decoration: BoxDecoration(
-                        color: iconBg,
+                        color: Colors.blue.withAlpha(20),
                         borderRadius: BorderRadius.circular(r.p(10)),
                       ),
                       child: Icon(
-                        Icons.folder_rounded,
-                        color: iconColor,
+                        Icons.folder_open_rounded,
+                        color: Colors.blue,
                         size: r.sp(24),
                       ),
                     ),
@@ -2184,11 +1872,7 @@ class _HomePageState extends State<HomePage>
                   folder.name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: r.sp(14),
-                    color: Colors.black87,
-                  ),
+                  style:w700_16Poppins()
                 ),
 
                 SizedBox(height: r.p(3)),
@@ -2238,7 +1922,6 @@ Divider(height: r.p(12)),
       );
     },
   ),
-)
         ]);
 
    
@@ -2321,7 +2004,7 @@ Divider(height: r.p(12)),
         padding: EdgeInsets.only(top: r.p(22)),
         child: Center(
           child: Text(
-            'No results for \"$query\"',
+            'No results for "$query"',
             style: TextStyle(color: Colors.grey.shade700),
           ),
         ),
@@ -2406,7 +2089,7 @@ Divider(height: r.p(12)),
                   decoration: BoxDecoration(
                     color: isSelected
                         ? const Color(0xFF2B41BD)
-                        : Colors.grey.shade100,
+                        : Colors.white,
                     borderRadius: BorderRadius.circular(r.p(8)),
                     border: Border.all(
                       color: isSelected
@@ -2438,7 +2121,7 @@ Divider(height: r.p(12)),
                         decoration: BoxDecoration(
                           color: isSelected
                               ? Colors.white.withAlpha(50)
-                              : Colors.grey.shade300,
+                              : Colors.grey.shade200,
                           borderRadius: BorderRadius.circular(r.p(10)),
                         ),
                         child: Text(
@@ -2816,6 +2499,7 @@ Divider(height: r.p(12)),
           children: [
             Expanded(
               child: TextField(
+              
                 controller: _searchController,
                 focusNode: _searchFocusNode,
                 onChanged: _onSearchChanged,
@@ -2830,6 +2514,7 @@ Divider(height: r.p(12)),
                 style: TextStyle(fontSize: r.sp(14)),
                 onTapOutside: (_) => _dismissKeyboard(),
                 decoration: InputDecoration(
+                  fillColor: Colors.white,
                   hintText: 'Search documents…',
                   hintStyle: TextStyle(fontSize: r.sp(14)),
                   prefixIcon: _isSearching
@@ -2874,80 +2559,85 @@ Divider(height: r.p(12)),
         if (_isUploading) _buildUploadingBanner(),
       ];
 
-      return Column(
-        children: [
-          ...banners,
-          Expanded(
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 360,
-                  child: Column(
-                    children: [
-                      searchBar(),
-                      _buildTypeFilterChips(),
-                      Expanded(
-                        child: RefreshIndicator(
-                          onRefresh: _refreshData,
-                          child: ListView(
-                            padding: EdgeInsets.all(r.p(14)),
-                            children: [
-                              if (activeQuery.isEmpty)
-                                _buildFoldersSection(
-                                  displayFolders,
-                                  totalFolderCount: totalFolderCount,
-                                )
-                              else ...[
-                                Text(
-                                  'Folder matches',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: r.sp(16),
-                                    color: Colors.indigo,
+      return Container(
+       color: Colors.grey.shade100,
+        child: Column(
+          children: [
+            ...banners,
+            Expanded(
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 360,
+                    child: Column(
+                      children: [
+                        searchBar(),
+                        _buildTypeFilterChips(),
+                        Expanded(
+                          child: RefreshIndicator(
+                            onRefresh: _refreshData,
+                            child: ListView(
+                              padding: EdgeInsets.all(r.p(14)),
+                              children: [
+                                if (activeQuery.isEmpty)
+                                  _buildFoldersSection(
+                                    displayFolders,
+                                    totalFolderCount: totalFolderCount,
+                                  )
+                                else ...[
+                                  Text(
+                                    'Folder matches',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: r.sp(16),
+                                      color: Colors.indigo,
+                                    ),
                                   ),
-                                ),
-                                SizedBox(height: r.p(10)),
-                                _buildFolderSearchSection(folderMatches),
+                                  SizedBox(height: r.p(10)),
+                                  _buildFolderSearchSection(folderMatches),
+                                ],
                               ],
-                            ],
+                            ),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-                const VerticalDivider(width: 1),
-                Expanded(
-                  child: RefreshIndicator(
-                    onRefresh: _refreshData,
-                    child: ListView(
-                      padding: EdgeInsets.all(r.p(14)),
-                      children: [
-                        if (activeQuery.isEmpty)
-                          _buildDocumentsSection(filteredDocuments)
-                        else
-                          _buildSearchDocumentsSection(
-                            query: activeQuery,
-                            semanticDocs: semanticDocs,
-                            normalOnlyDocs: normalOnlyDocs,
-                          ),
                       ],
                     ),
                   ),
-                ),
-              ],
+                  const VerticalDivider(width: 1),
+                  Expanded(
+                    child: RefreshIndicator(
+                      onRefresh: _refreshData,
+                      child: ListView(
+                        padding: EdgeInsets.all(r.p(14)),
+                        children: [
+                          if (activeQuery.isEmpty)
+                            _buildDocumentsSection(filteredDocuments)
+                          else
+                            _buildSearchDocumentsSection(
+                              query: activeQuery,
+                              semanticDocs: semanticDocs,
+                              normalOnlyDocs: normalOnlyDocs,
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       );
     }
 
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+
+
         if (!ApiService.isConnected) _buildOfflineBanner(),
         if (_isDownloading) _buildDownloadingBanner(),
         if (_isUploading) _buildUploadingBanner(),
-
         // Search bar
         Container(
           padding: EdgeInsets.symmetric(
@@ -3024,6 +2714,7 @@ Divider(height: r.p(12)),
                     displayFolders,
                     totalFolderCount: totalFolderCount,
                   ),
+                  height10,
                   _buildDocumentsSection(filteredDocuments),
                 ] else ...[
                   Text(
@@ -3488,12 +3179,7 @@ Divider(height: r.p(12)),
     );
   }
 
-  Widget _buildLoadingBanner() {
-    return _buildStatusBanner(
-      message: 'Loading documents...',
-      color: Colors.blue,
-    );
-  }
+ 
 
   Widget _buildDownloadingBanner() {
     return _buildStatusBanner(
@@ -3538,156 +3224,6 @@ Divider(height: r.p(12)),
     return docColors[fileType.toUpperCase()] ?? Colors.indigo;
   }
 
-  // Original folder list item (updated)
-  Widget _buildFolderListItem(Folder folder, int index) {
-    final r = context.r;
-    return Container(
-      margin: EdgeInsets.only(bottom: r.p(8)),
-      child: Material(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(r.p(12)),
-        elevation: 1,
-        child: InkWell(
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => FolderScreen(
-                  folderId: folder.id,
-                  folderName: folder.name,
-                  userName: _displayUserName,
-                ),
-              ),
-            );
-          },
-          onLongPress: () => _showDeleteFolderConfirmation(context, index),
-          borderRadius: BorderRadius.circular(r.p(12)),
-          child: Container(
-            padding: EdgeInsets.symmetric(
-              horizontal: r.p(14),
-              vertical: r.p(11),
-            ),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(r.p(12)),
-              border: Border.all(color: Colors.grey.shade200, width: 1),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  padding: EdgeInsets.all(r.p(9)),
-                  decoration: BoxDecoration(
-                    color: Colors.amber.shade50,
-                    borderRadius: BorderRadius.circular(r.p(10)),
-                  ),
-                  child: Icon(
-                    Icons.folder,
-                    color: Colors.amber.shade700,
-                    size: r.sp(26),
-                  ),
-                ),
-                SizedBox(width: r.p(14)),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        folder.name,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: r.sp(15),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-                SizedBox(width: r.p(4)),
-                PopupMenuButton(
-                  itemBuilder: (context) => [
-                    PopupMenuItem(
-                      value: 'download',
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.download_rounded,
-                            size: r.sp(18),
-                            color: Colors.green,
-                          ),
-                          SizedBox(width: r.p(8)),
-                          const Text('Download'),
-                        ],
-                      ),
-                    ),
-                    PopupMenuItem(
-                      value: 'download_zip',
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.archive_rounded,
-                            size: r.sp(18),
-                            color: Colors.green,
-                          ),
-                          SizedBox(width: r.p(8)),
-                          const Text('Download as ZIP'),
-                        ],
-                      ),
-                    ),
-                    PopupMenuItem(
-                      value: 'share',
-                      child: Row(
-                        children: [
-                          Icon(Icons.share, size: r.sp(18), color: Colors.blue),
-                          SizedBox(width: r.p(8)),
-                          const Text('Share Folder'),
-                        ],
-                      ),
-                    ),
-                    PopupMenuItem(
-                      value: 'delete',
-                      child: Row(
-                        children: [
-                          Icon(Icons.delete, size: r.sp(18), color: Colors.red),
-                          SizedBox(width: r.p(8)),
-                          const Text('Delete Folder'),
-                        ],
-                      ),
-                    ),
-                  ],
-                  onSelected: (value) {
-                    if (value == 'download') {
-                      _downloadFolderFiles(folder);
-                    } else if (value == 'download_zip') {
-                      _downloadFolderZip(folder);
-                    } else if (value == 'share') {
-                      _showFolderShareDialog(folder);
-                    } else if (value == 'delete') {
-                      _showDeleteFolderConfirmation(context, index);
-                    }
-                  },
-                  child: Container(
-                    width: r.p(34),
-                    height: r.p(34),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Center(
-                      child: Icon(
-                        Icons.more_vert,
-                        size: r.sp(18),
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 
   // Original document card (updated)
   Widget _buildDocumentCard(
@@ -3696,16 +3232,16 @@ Divider(height: r.p(12)),
     String? searchModeLabel,
   }) {
     final r = context.r;
-    final docIcons = {
-      'PDF': Icons.picture_as_pdf,
-      'DOCX': Icons.description,
-      'XLSX': Icons.table_chart,
-      'PPTX': Icons.slideshow,
-      'TXT': Icons.text_snippet,
-      'XLS': Icons.table_chart,
-      'PPT': Icons.slideshow,
-      'DOC': Icons.description,
-    };
+    // final docIcons = {
+    //   'PDF': Icons.picture_as_pdf,
+    //   'DOCX': Icons.description,
+    //   'XLSX': Icons.table_chart,
+    //   'PPTX': Icons.slideshow,
+    //   'TXT': Icons.text_snippet,
+    //   'XLS': Icons.table_chart,
+    //   'PPT': Icons.slideshow,
+    //   'DOC': Icons.description,
+    // };
     final docColors = {
       'PDF': Colors.red,
       'DOCX': Colors.blue,
@@ -3718,7 +3254,7 @@ Divider(height: r.p(12)),
     };
 
     String fileType = document.type.toUpperCase();
-    IconData icon = docIcons[fileType] ?? Icons.insert_drive_file;
+    // IconData icon = docIcons[fileType] ?? Icons.insert_drive_file;
     Color color = docColors[fileType] ?? Colors.indigo;
 
     // Format the date to DD MM YYYY
@@ -3789,7 +3325,7 @@ Divider(height: r.p(12)),
                                       SizedBox(height: r.p(3)),
                                   
                         Text(
-                          '$formattedDate',
+                          formattedDate,
                           style:w500_14Poppins(color:Colors.grey.shade600 ),
                         ),
                         SizedBox(height: r.p(2)),
@@ -4032,34 +3568,7 @@ Divider(height: r.p(12)),
     );
   }
 
-  Widget _buildEmptyState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.folder_open, size: 80, color: Colors.grey.shade400),
-            const SizedBox(height: 20),
-            const Text(
-              'No Documents Yet',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              'Upload your first document using the Upload Document tab',
-              style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+ 
 
   List<Document> _getFilteredDocuments() {
     // Home page shows only documents in the root ("Home") context.
@@ -4179,7 +3688,7 @@ Divider(height: r.p(12)),
                     const SizedBox(height: 20),
 
                     Text(
-                      _displayUserName,
+                      _displayUserName[0].toUpperCase() + _displayUserName.substring(1),
                       style: const TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
@@ -4281,4 +3790,4 @@ Divider(height: r.p(12)),
       ),
     );
   }
-}
+} 

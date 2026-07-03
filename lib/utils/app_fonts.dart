@@ -386,6 +386,16 @@ TextStyle w700_16Poppins({Color? color = Colors.black}) {
   );
 }
 
+TextStyle w700_17Poppins({Color? color = Colors.black}) {
+  return TextStyle(
+    fontSize: 17,
+    fontWeight: FontWeight.w700,
+    color: color,
+    fontFamily: poppins,
+  );
+}
+
+
 TextStyle w700_18Poppins({Color? color = Colors.black}) {
   return TextStyle(
     fontSize: 18,

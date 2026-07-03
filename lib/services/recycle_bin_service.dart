@@ -129,7 +129,7 @@ class RecycleBinService {
           'path': path,
           if (queryParameters != null && queryParameters.isNotEmpty)
             'queryParameters': queryParameters,
-          if (d != null) 'data': d,
+          'data': ?d,
         };
       }
 

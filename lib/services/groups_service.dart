@@ -106,9 +106,9 @@ class GroupsService {
   }) async {
     final payload = <String, dynamic>{
       'name': name,
-      if (description != null) 'description': description,
-      if (colorHex != null) 'color': colorHex,
-      if (avatarEmoji != null) 'avatarEmoji': avatarEmoji,
+      'description': ?description,
+      'color': ?colorHex,
+      'avatarEmoji': ?avatarEmoji,
     };
     final resp = await _dio.post(_groupsBasePath, data: payload);
     return resp.statusCode == 201 || resp.statusCode == 200;
@@ -123,12 +123,12 @@ class GroupsService {
     bool? isActive,
   }) async {
     final payload = <String, dynamic>{
-      if (name != null) 'name': name,
-      if (description != null) 'description': description,
-      if (colorHex != null) 'color': colorHex,
-      if (avatarEmoji != null) 'avatarEmoji': avatarEmoji,
-      if (isActive != null) 'isActive': isActive,
-      if (isActive != null) 'is_active': isActive,
+      'name': ?name,
+      'description': ?description,
+      'color': ?colorHex,
+      'avatarEmoji': ?avatarEmoji,
+      'isActive': ?isActive,
+      'is_active': ?isActive,
     };
     final resp = await _dio.patch('$_groupsBasePath/$groupId', data: payload);
     return resp.statusCode == 200;

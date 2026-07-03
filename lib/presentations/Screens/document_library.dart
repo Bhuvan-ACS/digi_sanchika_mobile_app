@@ -2,6 +2,7 @@
 
 import 'dart:io';
 import 'dart:convert';
+import 'package:digi_sanchika/utils/app_fonts.dart';
 import 'package:flutter/material.dart';
 import 'package:digi_sanchika/widgets/dismiss_keyboard.dart';
 import 'package:path_provider/path_provider.dart';
@@ -11,7 +12,6 @@ import 'package:digi_sanchika/services/document_library_service.dart';
 import 'package:path/path.dart' as path;
 import 'package:digi_sanchika/services/api_service.dart';
 import 'package:digi_sanchika/services/document_opener_service.dart';
-import 'package:flutter/services.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:digi_sanchika/services/my_documents_service.dart';
 import 'package:digi_sanchika/widgets/share_access_sheet.dart';
@@ -38,19 +38,19 @@ class _DocumentLibraryState extends State<DocumentLibrary>
   String _selectedFilter = 'All';
   List<Document> _publicDocuments = [];
   List<Document> _filteredDocuments = [];
-  bool _isDownloading = false;
+  final bool _isDownloading = false;
   bool _isLoading = true;
   bool _hasError = false;
   String _errorMessage = '';
 
   // NEW: Layout mode and file type filter variables (SAME AS SHARED ME)
   LibraryViewMode _currentViewMode = LibraryViewMode.list;
-  bool _showFileTypeFilter = false;
+  final bool showFileTypeFilter = false;
   String _selectedFileType = 'All';
-  List<String> _availableFileTypes = ['All'];
+  List<String> availableFileTypes = ['All'];
 
   // NEW: Collapsible states for document cards
-  Map<String, bool> _expandedStates = {};
+  final Map<String, bool> _expandedStates = {};
 
   @override
   void initState() {
@@ -91,7 +91,7 @@ class _DocumentLibraryState extends State<DocumentLibrary>
       setState(() {
         _publicDocuments = documents;
         _filteredDocuments = documents;
-        _availableFileTypes = ['All', ...fileTypes];
+        availableFileTypes = ['All', ...fileTypes];
         _isLoading = false;
       });
 
@@ -123,7 +123,7 @@ class _DocumentLibraryState extends State<DocumentLibrary>
         setState(() {
           _publicDocuments = localDocs;
           _filteredDocuments = localDocs;
-          _availableFileTypes = ['All', ...fileTypes];
+          availableFileTypes = ['All', ...fileTypes];
           _hasError = true;
           _errorMessage = 'Using cached data. No internet connection.';
           _isLoading = false;
@@ -158,9 +158,6 @@ class _DocumentLibraryState extends State<DocumentLibrary>
     }
   }
 
-  void _refreshDocuments() {
-    _loadPublicDocuments();
-  }
 
   @override
   void dispose() {
@@ -501,7 +498,7 @@ class _DocumentLibraryState extends State<DocumentLibrary>
       borderRadius: BorderRadius.circular(12),
       child: Card(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        elevation: 2,
+        elevation: 0.5,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -520,7 +517,7 @@ class _DocumentLibraryState extends State<DocumentLibrary>
                     ),
                     child: Icon(iconData, color: color, size: 32),
                   ),
-                  const SizedBox(width: 16),
+               width10,
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -528,14 +525,27 @@ class _DocumentLibraryState extends State<DocumentLibrary>
                         Row(
                           children: [
                             Expanded(
-                              child: Text(
-                                document.name,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                                maxLines: isExpanded ? 2 : 1,
-                                overflow: TextOverflow.ellipsis,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    document.name,
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    maxLines: isExpanded ? 2 : 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                    const SizedBox(height: 4),
+                        Text(
+                          'Type: ${_getDisplayFileType(document)} • $formattedDate',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                                ],
                               ),
                             ),
                             // COLLAPSIBLE EXPAND/COLLAPSE BUTTON
@@ -600,14 +610,7 @@ class _DocumentLibraryState extends State<DocumentLibrary>
                             ),
                           ],
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Type: ${_getDisplayFileType(document)} • $formattedDate',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
+                      
                       ],
                     ),
                   ),
@@ -630,22 +633,22 @@ class _DocumentLibraryState extends State<DocumentLibrary>
                         _buildDetailRowWithIcon(
                           'Keyword',
                           document.keyword,
-                          Icons.label,
+                          Icons.label_important_outline,
                         ),
                       _buildDetailRowWithIcon(
                         'Owner',
                         document.owner,
-                        Icons.person,
+                        Icons.person_2_outlined,
                       ),
                       _buildDetailRowWithIcon(
                         'Folder',
                         document.folder,
-                        Icons.folder,
+                        Icons.folder_open_outlined,
                       ),
                       _buildDetailRowWithIcon(
                         'Classification',
                         document.classification,
-                        Icons.security,
+                        Icons.security_outlined,
                       ),
                       if (document.details.isNotEmpty)
                         _buildDetailRowWithIcon(
@@ -712,7 +715,7 @@ class _DocumentLibraryState extends State<DocumentLibrary>
     final color = _getFileColor(effectiveType);
 
     return Card(
-      elevation: 2,
+      elevation: 0.5,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: InkWell(
         onTap: () => _handleDocumentDoubleTap(document),
@@ -823,7 +826,7 @@ class _DocumentLibraryState extends State<DocumentLibrary>
     final color = _getFileColor(effectiveType);
 
     return Card(
-      elevation: 2,
+      elevation: 0.5,
       margin: const EdgeInsets.only(bottom: 8),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: InkWell(
@@ -1094,11 +1097,7 @@ class _DocumentLibraryState extends State<DocumentLibrary>
   }
 
   // Search by keyword
-  void _searchByKeyword(String keyword) {
-    _searchController.text = keyword;
-    _filterDocuments(keyword);
-  }
-
+ 
   Future<void> _showDocumentVersions(Document document) async {
     await VersionHistoryDialog.show(context, document: document);
   }
@@ -1321,24 +1320,20 @@ class _DocumentLibraryState extends State<DocumentLibrary>
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(iconData, size: 16, color: Colors.grey.shade600),
+          Icon(iconData, size: 18, color: Colors.grey.shade600),
           const SizedBox(width: 12),
           SizedBox(
             width: 100,
             child: Text(
               label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: Colors.grey.shade700,
-              ),
+              style: w400_13Poppins(color: Colors.grey.shade700)
             ),
           ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               value,
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade800),
+              style: TextStyle(fontSize: 14, color: Colors.grey.shade800),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
@@ -1539,16 +1534,13 @@ class _DocumentLibraryState extends State<DocumentLibrary>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+    
       appBar: AppBar(
-        title: const Text(
+        title:  Text(
           'Document Library',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: Colors.indigo,
-          ),
+          style: w700_18Poppins(color: Colors.indigo)
         ),
-        backgroundColor: Colors.white,
+        backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
         leading: IconButton(
@@ -1568,7 +1560,7 @@ class _DocumentLibraryState extends State<DocumentLibrary>
             // Search and filter section
             Container(
               padding: const EdgeInsets.all(16),
-              color: Colors.grey.shade50,
+       
               child: Column(
                 children: [
                 // Search and Filter Row
@@ -1621,8 +1613,6 @@ class _DocumentLibraryState extends State<DocumentLibrary>
                     ),
                     const SizedBox(width: 10),
                     // Layout Selector
-                    _buildLayoutSelector(),
-                    const SizedBox(width: 12),
                     // Filter Dropdown
                     Container(
                       constraints: const BoxConstraints(maxWidth: 120),
@@ -1631,7 +1621,7 @@ class _DocumentLibraryState extends State<DocumentLibrary>
                         boxShadow: [
                           BoxShadow(
                             color: Colors.grey.withAlpha(10),
-                            blurRadius: 8,
+                            blurRadius: 1,
                             offset: const Offset(0, 2),
                           ),
                         ],
