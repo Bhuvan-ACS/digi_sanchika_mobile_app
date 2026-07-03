@@ -105,37 +105,67 @@ class _RecycleBinScreenState extends State<RecycleBinScreen> {
       case 'folder':
         return Colors.amber.shade800;
       case 'pdf':
-        return Colors.red;
+        return const Color(0xFFD32F2F);
       case 'doc':
       case 'docx':
-        return Colors.blue;
+        return const Color(0xFF3B5CDB);
       case 'xls':
       case 'xlsx':
-        return Colors.green;
+        return const Color(0xFF2E7D32);
       case 'csv':
-        return Colors.green.shade700;
+        return const Color(0xFF2E7D32);
       case 'ppt':
       case 'pptx':
-        return Colors.orange;
+        return const Color(0xFFE65100);
       case 'jpg':
       case 'jpeg':
       case 'png':
       case 'gif':
       case 'jiff':
-        return Colors.purple;
+        return const Color(0xFF6A1B9A);
       case 'txt':
-        return Colors.grey;
+        return Colors.grey.shade700;
       default:
         return const Color(0xFF2B41BD);
     }
   }
 
-  String _subtitleForItem(RecycleBinItem item) {
-    final isFolder = item.entityType.toLowerCase().contains('folder');
-    final typeLabel = isFolder ? 'Folder' : _inferFileType(item).toUpperCase();
+  /// Short badge label shown in the leading tile, e.g. "PDF", "DOCX", "XLSX".
+  String _badgeLabel(RecycleBinItem item) {
+    final t = _inferFileType(item);
+    if (t == 'folder') return 'DIR';
+    if (t == 'file') return 'FILE';
+    return t.toUpperCase();
+  }
+
+  /// Turns an ISO/free-text deletedAt value into a relative string like
+  /// "2 days ago". Falls back to the raw string if it can't be parsed.
+  String _deletedAgo(RecycleBinItem item) {
     final deleted = item.deletedAt?.trim();
-    if (deleted == null || deleted.isEmpty) return typeLabel;
-    return '$typeLabel • $deleted';
+    if (deleted == null || deleted.isEmpty) return '';
+    final dt = DateTime.tryParse(deleted);
+    if (dt == null) return deleted;
+    final diff = DateTime.now().difference(dt);
+    if (diff.inSeconds < 60) return 'Deleted just now';
+    if (diff.inMinutes < 60) return 'Deleted ${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return 'Deleted ${diff.inHours}h ago';
+    if (diff.inDays < 7) {
+      final d = diff.inDays;
+      return 'Deleted $d day${d == 1 ? '' : 's'} ago';
+    }
+    if (diff.inDays < 30) {
+      final w = (diff.inDays / 7).floor();
+      return 'Deleted $w week${w == 1 ? '' : 's'} ago';
+    }
+    final mo = (diff.inDays / 30).floor();
+    return 'Deleted $mo month${mo == 1 ? '' : 's'} ago';
+  }
+
+  String _subtitleForItem(RecycleBinItem item) {
+    final ago = _deletedAgo(item);
+    if (ago.isNotEmpty) return ago;
+    final isFolder = item.entityType.toLowerCase().contains('folder');
+    return isFolder ? 'Folder' : _inferFileType(item).toUpperCase();
   }
 
   Future<void> _restore(RecycleBinItem item) async {
@@ -347,36 +377,61 @@ class _RecycleBinScreenState extends State<RecycleBinScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF3F4F8),
       appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.black87),
+        titleSpacing: 0,
         title: _selectedEntityIds.isEmpty
-            ? const Text('Recycle Bin')
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text(
+                    'Recycle Bin',
+                    style: TextStyle(
+                      color: Colors.black87,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 18,
+                    ),
+                  ),
+                  Text(
+                    'Items are permanently removed after 30 days',
+                    style: TextStyle(
+                      color: Colors.grey.shade500,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              )
             : Text('${_selectedEntityIds.length} selected'),
         actions: [
           if (_selectedEntityIds.isNotEmpty) ...[
             IconButton(
               tooltip: 'Restore selected',
-              icon: const Icon(Icons.restore_rounded),
+              icon: const Icon(Icons.restore_rounded,color: Colors.black87),
               onPressed: _restoreSelected,
             ),
             IconButton(
               tooltip: 'Delete selected permanently',
-              icon: const Icon(Icons.delete_forever_rounded),
+              icon: const Icon(Icons.delete_forever_rounded,color: Colors.black87),
               onPressed: _deleteSelectedForever,
             ),
             IconButton(
               tooltip: 'Clear selection',
-              icon: const Icon(Icons.close_rounded),
+              icon: const Icon(Icons.close_rounded,color: Colors.black87),
               onPressed: _clearSelection,
             ),
           ] else ...[
             ViewModePopupButton(
               value: _currentViewMode,
-              iconColor: Colors.white,
+              iconColor: Colors.black87,
               onSelected: (mode) => setState(() => _currentViewMode = mode),
             ),
             IconButton(
               onPressed: _load,
-              icon: const Icon(Icons.refresh_rounded),
+              icon: const Icon(Icons.refresh_rounded,color: Colors.black87),
             ),
           ],
         ],
@@ -385,7 +440,47 @@ class _RecycleBinScreenState extends State<RecycleBinScreen> {
           ? const Center(child: CircularProgressIndicator())
           : _items.isEmpty
           ? const Center(child: Text('Recycle bin is empty'))
-          : RefreshIndicator(onRefresh: _load, child: _buildItemsContent()),
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: Column(
+                children: [
+                  _buildInfoBanner(),
+                  Expanded(child: _buildItemsContent()),
+                ],
+              ),
+            ),
+    );
+  }
+
+  Widget _buildInfoBanner() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF3E0),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFFFE0B2)),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.info_outline_rounded,
+            color: Color(0xFFE65100),
+            size: 18,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Items are permanently removed after 30 days',
+              style: TextStyle(
+                color: Colors.orange.shade900,
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -427,94 +522,132 @@ class _RecycleBinScreenState extends State<RecycleBinScreen> {
   Widget _buildItemTile(RecycleBinItem item, {bool dense = false}) {
     final isBusy = _busyEntityIds.contains(_busyKey(item));
     final isSelected = _isSelected(item);
-    final icon = _getIconForItem(item);
     final color = _getColorForItem(item);
+    final badge = _badgeLabel(item);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(18),
         onTap: _selectedEntityIds.isEmpty ? null : () => _toggleSelected(item),
         onLongPress: () => _toggleSelected(item),
-        child: Card(
-          elevation: 1,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: isSelected
-                ? BorderSide(color: Colors.grey.shade600, width: 2)
-                : BorderSide.none,
+        child: Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: dense ? 12 : 14,
+            vertical: dense ? 10 : 14,
           ),
-          child: Container(
-            padding: EdgeInsets.symmetric(
-              horizontal: dense ? 10 : 12,
-              vertical: dense ? 10 : 12,
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: dense ? 38 : 44,
-                  height: dense ? 38 : 44,
-                  decoration: BoxDecoration(
-                    color: color.withAlpha(18),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(icon, color: color),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: isSelected
+                ? Border.all(color: Colors.grey.shade600, width: 2)
+                : null,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withAlpha(8),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: dense ? 42 : 48,
+                height: dense ? 42 : 48,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: color.withAlpha(24),
+                  borderRadius: BorderRadius.circular(14),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        item.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: dense ? 13 : 14,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        _subtitleForItem(item),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: dense ? 11 : 12,
-                          color: Colors.grey.shade600,
-                        ),
-                      ),
-                    ],
+                child: Text(
+                  badge,
+                  style: TextStyle(
+                    color: color,
+                    fontWeight: FontWeight.w800,
+                    fontSize: dense ? 10 : 11,
+                    letterSpacing: 0.2,
                   ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: dense ? 13 : 15,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _subtitleForItem(item),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: dense ? 11 : 13,
+                        color: Colors.grey.shade500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (isBusy)
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else ...[
+                _circleIconButton(
+                  tooltip: 'Restore',
+                  icon: Icons.restore_rounded,
+                  color: const Color(0xFF4F63FF),
+                  onPressed: () => _restore(item),
                 ),
                 const SizedBox(width: 8),
-                if (isBusy)
-                  const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                else ...[
-                  IconButton(
-                    tooltip: 'Restore',
-                    icon: const Icon(
-                      Icons.restore_rounded,
-                      color: Colors.green,
-                    ),
-                    onPressed: () => _restore(item),
-                  ),
-                  IconButton(
-                    tooltip: 'Delete permanently',
-                    icon: const Icon(
-                      Icons.delete_forever_rounded,
-                      color: Colors.red,
-                    ),
-                    onPressed: () => _deleteForever(item),
-                  ),
-                ],
+                _circleIconButton(
+                  tooltip: 'Delete permanently',
+                  icon: Icons.delete_forever_rounded,
+                  color: Colors.red,
+                  onPressed: () => _deleteForever(item),
+                ),
               ],
-            ),
+            ],
           ),
+        ),
+      ),
+    );
+  }
+
+  /// Small rounded, tinted icon button used for Restore / Delete actions,
+  /// matching the pill-style buttons in the target design.
+  Widget _circleIconButton({
+    required String tooltip,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onPressed,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onPressed,
+        child: Container(
+          width: 38,
+          height: 38,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: color.withAlpha(24),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: color, size: 20),
         ),
       ),
     );
@@ -523,36 +656,51 @@ class _RecycleBinScreenState extends State<RecycleBinScreen> {
   Widget _buildItemGrid(RecycleBinItem item) {
     final isBusy = _busyEntityIds.contains(_busyKey(item));
     final isSelected = _isSelected(item);
-    final icon = _getIconForItem(item);
     final color = _getColorForItem(item);
+    final badge = _badgeLabel(item);
 
     return InkWell(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(18),
       onTap: _selectedEntityIds.isEmpty ? null : () => _toggleSelected(item),
       onLongPress: () => _toggleSelected(item),
-      child: Card(
-        elevation: 1,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: isSelected
-              ? BorderSide(color: Colors.grey.shade600, width: 2)
-              : BorderSide.none,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: isSelected
+              ? Border.all(color: Colors.grey.shade600, width: 2)
+              : null,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withAlpha(8),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
         ),
         child: Padding(
-          padding: const EdgeInsets.all(10),
+          padding: const EdgeInsets.all(12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 40,
-                height: 40,
+                width: 44,
+                height: 44,
+                alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: color.withAlpha(18),
-                  borderRadius: BorderRadius.circular(12),
+                  color: color.withAlpha(24),
+                  borderRadius: BorderRadius.circular(14),
                 ),
-                child: Icon(icon, color: color),
+                child: Text(
+                  badge,
+                  style: TextStyle(
+                    color: color,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 11,
+                  ),
+                ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               Text(
                 item.name,
                 maxLines: 2,
@@ -567,7 +715,7 @@ class _RecycleBinScreenState extends State<RecycleBinScreen> {
                 _subtitleForItem(item),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
               ),
               const Spacer(),
               Row(
@@ -580,25 +728,17 @@ class _RecycleBinScreenState extends State<RecycleBinScreen> {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   else ...[
-                    IconButton(
+                    _circleIconButton(
                       tooltip: 'Restore',
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                      icon: const Icon(
-                        Icons.restore_rounded,
-                        color: Colors.green,
-                      ),
+                      icon: Icons.restore_rounded,
+                      color: const Color(0xFF4F63FF),
                       onPressed: () => _restore(item),
                     ),
-                    const SizedBox(width: 10),
-                    IconButton(
+                    const SizedBox(width: 8),
+                    _circleIconButton(
                       tooltip: 'Delete permanently',
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                      icon: const Icon(
-                        Icons.delete_forever_rounded,
-                        color: Colors.red,
-                      ),
+                      icon: Icons.delete_forever_rounded,
+                      color: Colors.red,
                       onPressed: () => _deleteForever(item),
                     ),
                   ],

@@ -1,3 +1,4 @@
+import 'package:digi_sanchika/utils/app_fonts.dart';
 import 'package:flutter/material.dart';
 import 'package:digi_sanchika/widgets/responsive_page.dart';
 import 'package:digi_sanchika/services/download_requests_service.dart';
@@ -5,7 +6,6 @@ import 'package:digi_sanchika/models/download_request.dart';
 import 'package:digi_sanchika/models/document.dart';
 import 'package:digi_sanchika/services/my_documents_service.dart';
 import 'package:digi_sanchika/presentations/Screens/document_preview_screen.dart';
-import 'package:digi_sanchika/widgets/request_document_card.dart';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
@@ -148,65 +148,37 @@ class _DownloadRequestsScreenState extends State<DownloadRequestsScreen>
     return s == 'approved' || s == 'approve' || s == 'granted';
   }
 
-  ({String text, Color color, IconData icon}) _statusStyle(String status) {
+  ({String text, Color bg, Color fg, IconData icon}) _statusChipStyle(String status) {
     final s = status.trim().toLowerCase();
     if (s.contains('approve') || s.contains('granted')) {
-      return (text: 'Approved', color: Colors.green.shade700, icon: Icons.check_circle);
+      return (
+        text: 'Approved',
+        bg: const Color(0xFFE6F6EC),
+        fg: const Color(0xFF1E8A4C),
+        icon: Icons.check_circle_rounded,
+      );
     }
     if (s.contains('reject') || s.contains('denied')) {
-      return (text: 'Rejected', color: Colors.red.shade700, icon: Icons.cancel);
+      return (
+        text: 'Rejected',
+        bg: const Color(0xFFFCEAEA),
+        fg: const Color(0xFFD32F2F),
+        icon: Icons.cancel_rounded,
+      );
     }
     if (s.contains('pending') || s.contains('requested')) {
-      return (text: 'Pending', color: Colors.orange.shade800, icon: Icons.hourglass_top);
+      return (
+        text: 'Pending',
+        bg: const Color(0xFFFFF3E0),
+        fg: const Color(0xFFE65100),
+        icon: Icons.hourglass_top_rounded,
+      );
     }
-    return (text: status.isEmpty ? 'Unknown' : status, color: Colors.grey.shade700, icon: Icons.info_outline);
-  }
-
-  Widget _docLeading(Document? doc) {
-    final name = (doc?.name ?? '').toLowerCase();
-    final ext = name.contains('.') ? name.split('.').last : '';
-    final icon = switch (ext) {
-      'pdf' => Icons.picture_as_pdf_rounded,
-      'doc' || 'docx' => Icons.description_rounded,
-      'xls' || 'xlsx' => Icons.grid_on_rounded,
-      'ppt' || 'pptx' => Icons.slideshow_rounded,
-      'jpg' || 'jpeg' || 'png' => Icons.image_rounded,
-      'txt' => Icons.text_snippet_rounded,
-      _ => Icons.insert_drive_file_rounded,
-    };
-    final color = switch (ext) {
-      'pdf' => const Color(0xFFD32F2F),
-      'doc' || 'docx' => const Color(0xFF1565C0),
-      'xls' || 'xlsx' => const Color(0xFF2E7D32),
-      'ppt' || 'pptx' => const Color(0xFFE65100),
-      'jpg' || 'jpeg' || 'png' => const Color(0xFF6A1B9A),
-      'txt' => const Color(0xFF455A64),
-      _ => const Color(0xFF2B41BD),
-    };
-
-    return Container(
-      width: 44,
-      height: 44,
-      decoration: BoxDecoration(
-        color: color.withAlpha(18),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withAlpha(35)),
-      ),
-      child: Icon(icon, color: color),
-    );
-  }
-
-  Widget _folderLeading() {
-    const color = Color(0xFF2B41BD);
-    return Container(
-      width: 44,
-      height: 44,
-      decoration: BoxDecoration(
-        color: color.withAlpha(18),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withAlpha(35)),
-      ),
-      child: const Icon(Icons.folder_zip_rounded, color: color),
+    return (
+      text: status.isEmpty ? 'Unknown' : status,
+      bg: const Color(0xFFF0F0F0),
+      fg: Colors.grey.shade700,
+      icon: Icons.info_outline_rounded,
     );
   }
 
@@ -333,97 +305,398 @@ class _DownloadRequestsScreenState extends State<DownloadRequestsScreen>
     }
   }
 
-  Widget _buildRequestTile(DownloadRequest request, {bool actions = false}) {
-    final downloading = _downloadingIds.contains(request.id);
-    final status = _statusStyle(request.status);
+  /// Turns an ISO timestamp into a short relative string like "18m ago".
+  String _timeAgo(String? iso) {
+    if (iso == null || iso.isEmpty) return '';
+    final dt = DateTime.tryParse(iso);
+    if (dt == null) return '';
+    final diff = DateTime.now().difference(dt);
+    if (diff.inSeconds < 60) return 'now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    if (diff.inDays < 30) return '${diff.inDays}d ago';
+    if (diff.inDays < 365) return '${(diff.inDays / 30).floor()}mo ago';
+    return '${(diff.inDays / 365).floor()}y ago';
+  }
+
+  /// Card design for the "Pending" tab — avatar initial, name, time, a
+  /// "wants to download" chip with the file/folder name, and full-width
+  /// Decline / Approve buttons. Uses the same _service.approve/_service.reject
+  /// calls as before.
+  Widget _buildPendingRequestTile(DownloadRequest request) {
     final isFolder =
         (request.folderId != null && request.folderId!.isNotEmpty) ||
         (request.targetType?.toLowerCase() == 'folder');
 
-    if (isFolder) {
-      final title = request.folderName ?? 'Folder download';
-      final subtitle = actions
-          ? (request.requesterName != null
-              ? 'Requested by: ${request.requesterName}'
-              : (request.requesterEmail != null
-                  ? 'Requested by: ${request.requesterEmail}'
-                  : null))
-          : null;
+    final displayName = (request.requesterName?.trim().isNotEmpty == true)
+        ? request.requesterName!.trim()
+        : (request.requesterEmail ?? 'Unknown user');
 
-      final meta = [
-        if (request.createdAt != null && request.createdAt!.isNotEmpty)
-          'Requested: ${request.createdAt}',
-      ].join(' • ');
+    final initial = displayName.isNotEmpty ? displayName[0].toUpperCase() : '?';
 
-      final List<Widget> cardActions = [];
-      if (actions) {
-        cardActions.addAll([
-          TextButton.icon(
-            onPressed: () async {
-              final notes = await _promptNotes(title: 'Approve download request?');
-              if (notes == null) return;
-              await _service.approve(request.id, reviewNotes: notes);
-              if (!mounted) return;
-              await _load();
-            },
-            icon: const Icon(Icons.check_rounded),
-            label: const Text('Approve'),
-            style: TextButton.styleFrom(
-              foregroundColor: Colors.green.shade800,
-            ),
+    final fileOrFolderName = isFolder
+        ? (request.folderName ?? 'Folder')
+        : (request.documentName ?? 'Document');
+
+    final timeAgo = _timeAgo(request.createdAt);
+
+    // NOTE: "requesterRole" (e.g. "Product" in the design) isn't part of the
+    // current DownloadRequest model. If/when the API exposes it, add a
+    // `requesterRole` field to the model and this will pick it up
+    // automatically. Until then only the time-ago portion is shown.
+    final roleAndTime = [
+      // if (request.requesterRole != null && request.requesterRole!.isNotEmpty)
+      //   request.requesterRole,
+      if (timeAgo.isNotEmpty) timeAgo,
+    ].join(' • ');
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(10),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
-          const SizedBox(width: 8),
-          TextButton.icon(
-            onPressed: () async {
-              final notes = await _promptNotes(title: 'Reject download request?');
-              if (notes == null) return;
-              await _service.reject(request.id, reviewNotes: notes);
-              if (!mounted) return;
-              await _load();
-            },
-            icon: const Icon(Icons.close_rounded),
-            label: const Text('Reject'),
-            style: TextButton.styleFrom(
-              foregroundColor: Colors.red.shade700,
-            ),
-          ),
-        ]);
-      } else if (_isApproved(request)) {
-        cardActions.add(
-          ElevatedButton.icon(
-            onPressed:
-                downloading ? null : () => _downloadApprovedRequest(request),
-            icon: downloading
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.download_rounded, size: 18),
-            label: const Text('Download'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF2B41BD),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF6C4CE0),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  initial,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
               ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      displayName,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                      ),
+                    ),
+                    if (roleAndTime.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          roleAndTime,
+                          style: TextStyle(
+                            color: Colors.grey.shade500,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF4F5FA),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'wants to download',
+                  style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Icon(
+                      isFolder
+                          ? Icons.folder_zip_rounded
+                          : Icons.insert_drive_file_rounded,
+                      size: 16,
+                      color: const Color(0xFFE65100),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        fileOrFolderName,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
-        );
-      }
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    final notes = await _promptNotes(
+                      title: 'Reject download request?',
+                    );
+                    if (notes == null) return;
+                    await _service.reject(request.id, reviewNotes: notes);
+                    if (!mounted) return;
+                    await _load();
+                  },
+                  icon: const Icon(Icons.close_rounded, size: 18),
+                  label: const Text('Decline'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.red.shade600,
+                    side: BorderSide(color: Colors.grey.shade300),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () async {
+                    final notes = await _promptNotes(
+                      title: 'Approve download request?',
+                    );
+                    if (notes == null) return;
+                    await _service.approve(request.id, reviewNotes: notes);
+                    if (!mounted) return;
+                    await _load();
+                  },
+                  icon: const Icon(Icons.check_rounded, size: 18),
+                  label: const Text('Approve'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF2B41BD),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 
-      return RequestDocumentCard(
-        leading: _folderLeading(),
-        title: title,
-        subtitle: subtitle,
-        statusText: status.text,
-        statusColor: status.color,
-        statusIcon: status.icon,
-        metaLine: meta.isEmpty ? null : meta,
-        reason: request.reason,
-        onView: null,
-        actions: cardActions,
+  /// Card design for the "My Requests" tab — shows the file/folder the
+  /// current user requested, when it was requested, a status chip
+  /// (Pending / Approved / Rejected), and a View/Download action.
+  Widget _buildMyRequestTile(DownloadRequest request) {
+    final isFolder =
+        (request.folderId != null && request.folderId!.isNotEmpty) ||
+        (request.targetType?.toLowerCase() == 'folder');
+    final downloading = _downloadingIds.contains(request.id);
+    final chip = _statusChipStyle(request.status);
+    final timeAgo = _timeAgo(request.createdAt);
+
+    Widget buildCard(Document? doc) {
+      final title = isFolder
+          ? (request.folderName ?? 'Folder download')
+          : (doc?.name ?? request.documentName ?? 'Document');
+
+      return Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withAlpha(10),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2B41BD).withAlpha(18),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    isFolder
+                        ? Icons.folder_zip_rounded
+                        : Icons.insert_drive_file_rounded,
+                    color: const Color(0xFF2B41BD),
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                        ),
+                      ),
+                      if (timeAgo.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            'Requested $timeAgo',
+                            style: TextStyle(
+                              color: Colors.grey.shade500,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: chip.bg,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(chip.icon, size: 14, color: chip.fg),
+                      const SizedBox(width: 4),
+                      Text(
+                        chip.text,
+                        style: TextStyle(
+                          color: chip.fg,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (request.reason != null && request.reason!.trim().isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF4F5FA),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  request.reason!.trim(),
+                  style: TextStyle(
+                    color: Colors.grey.shade700,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ],
+            if (_isApproved(request) || (!isFolder && doc != null)) ...[
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  if (!isFolder && doc != null)
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => _viewDocument(doc),
+                        icon: const Icon(Icons.visibility_outlined, size: 18),
+                        label: const Text('View'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF2B41BD),
+                          side: BorderSide(color: Colors.grey.shade300),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (!isFolder && doc != null && _isApproved(request))
+                    const SizedBox(width: 12),
+                  if (_isApproved(request))
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: downloading
+                            ? null
+                            : () => _downloadApprovedRequest(request),
+                        icon: downloading
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor:
+                                      AlwaysStoppedAnimation(Colors.white),
+                                ),
+                              )
+                            : const Icon(Icons.download_rounded, size: 18),
+                        label: const Text('Download'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF2B41BD),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ],
+        ),
       );
+    }
+
+    if (isFolder) {
+      return buildCard(null);
     }
 
     return FutureBuilder<Document?>(
@@ -433,97 +706,7 @@ class _DownloadRequestsScreenState extends State<DownloadRequestsScreen>
             (request.documentName != null
                 ? _minimalDocument(request.documentId, request.documentName!)
                 : null);
-        final shortId = request.documentId.length > 8
-            ? request.documentId.substring(0, 8)
-            : request.documentId;
-        final title = doc?.name ?? 'Document $shortId';
-        final subtitle = (doc?.owner.isNotEmpty == true)
-            ? 'Owner: ${doc!.owner}'
-            : (actions
-                ? (request.requesterName != null
-                    ? 'Requested by: ${request.requesterName}'
-                    : (request.requesterEmail != null
-                        ? 'Requested by: ${request.requesterEmail}'
-                        : null))
-                : null);
-
-        final meta = [
-          if (doc?.folder.isNotEmpty == true) 'Folder: ${doc!.folder}',
-          if (request.createdAt != null && request.createdAt!.isNotEmpty)
-            'Requested: ${request.createdAt}',
-        ].join(' • ');
-
-        final onView = doc == null ? null : () => _viewDocument(doc);
-
-        final List<Widget> cardActions = [];
-        if (actions) {
-          cardActions.addAll([
-            TextButton.icon(
-              onPressed: () async {
-                final notes = await _promptNotes(title: 'Approve download request?');
-                if (notes == null) return;
-                await _service.approve(request.id, reviewNotes: notes);
-                if (!mounted) return;
-                await _load();
-              },
-              icon: const Icon(Icons.check_rounded),
-              label: const Text('Approve'),
-              style: TextButton.styleFrom(
-                foregroundColor: Colors.green.shade800,
-              ),
-            ),
-            const SizedBox(width: 8),
-            TextButton.icon(
-              onPressed: () async {
-                final notes = await _promptNotes(title: 'Reject download request?');
-                if (notes == null) return;
-                await _service.reject(request.id, reviewNotes: notes);
-                if (!mounted) return;
-                await _load();
-              },
-              icon: const Icon(Icons.close_rounded),
-              label: const Text('Reject'),
-              style: TextButton.styleFrom(
-                foregroundColor: Colors.red.shade700,
-              ),
-            ),
-          ]);
-        } else if (_isApproved(request)) {
-          cardActions.add(
-            ElevatedButton.icon(
-              onPressed:
-                  downloading ? null : () => _downloadApprovedRequest(request),
-              icon: downloading
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.download_rounded, size: 18),
-              label: const Text('Download'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF2B41BD),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-          );
-        }
-
-        return RequestDocumentCard(
-          leading: _docLeading(doc),
-          title: title,
-          subtitle: subtitle,
-          statusText: status.text,
-          statusColor: status.color,
-          statusIcon: status.icon,
-          metaLine: meta.isEmpty ? null : meta,
-          reason: request.reason,
-          onView: onView,
-          actions: cardActions,
-        );
+        return buildCard(doc);
       },
     );
   }
@@ -540,8 +723,9 @@ class _DownloadRequestsScreenState extends State<DownloadRequestsScreen>
       child: ListView.builder(
         padding: const EdgeInsets.only(top: 8, bottom: 24),
         itemCount: requests.length,
-        itemBuilder: (context, index) =>
-            _buildRequestTile(requests[index], actions: actions),
+        itemBuilder: (context, index) => actions
+            ? _buildPendingRequestTile(requests[index])
+            : _buildMyRequestTile(requests[index]),
       ),
     );
   }
@@ -550,7 +734,9 @@ class _DownloadRequestsScreenState extends State<DownloadRequestsScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Download Requests'),
+        backgroundColor: Colors.transparent,
+        iconTheme: IconThemeData(color: Colors.black),
+        title:  Text('Download Requests',style: w700_16Poppins(),),
         actions: [
           IconButton(
             tooltip: 'Refresh',
@@ -559,10 +745,13 @@ class _DownloadRequestsScreenState extends State<DownloadRequestsScreen>
           ),
         ],
         bottom: TabBar(
+          indicatorColor:  Color(0xFF4F63FF),
+          labelStyle:  w400_16Poppins(color:  Color(0xFF4F63FF)),
+          unselectedLabelStyle:w400_16Poppins(color: Colors.black45) ,
           controller: _tabController,
-          tabs: const [
-            Tab(text: 'My Requests'),
-            Tab(text: 'Pending'),
+          tabs:  [
+            Tab(child: Text('My Requests',style: w400_16Poppins(),),),
+            Tab(child:Text('Pending',style: w400_16Poppins(),)),
           ],
         ),
       ),

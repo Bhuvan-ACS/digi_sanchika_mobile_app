@@ -211,7 +211,7 @@ class _DocumentCommentsSheetWidgetState
                           )
                         : ListView.separated(
                             itemCount: _comments.length,
-                            separatorBuilder: (_, __) => const Divider(height: 1),
+                            separatorBuilder: (_, _) => const Divider(height: 1),
                             itemBuilder: (context, index) {
                               final c = _comments[index];
                               return ListTile(

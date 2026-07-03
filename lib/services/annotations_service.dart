@@ -29,7 +29,7 @@ class AnnotationsService {
   }) async {
     final resp = await _dio.get(
       '/documents/$documentId/annotations',
-      queryParameters: {if (version != null) 'version': version},
+      queryParameters: {'version': ?version},
     );
     if (resp.statusCode != 200) return null;
     final map = _asMap(resp.data);
@@ -63,17 +63,17 @@ class AnnotationsService {
       '/documents/$documentId/annotations',
       data: {
         'type': type,
-        if (pageNumber != null) 'pageNumber': pageNumber,
+        'pageNumber': ?pageNumber,
         'x': x,
         'y': y,
         'width': width,
         'height': height,
-        if (content != null) 'content': content,
-        if (colorHex != null) 'color': colorHex,
-        if (opacity != null) 'opacity': opacity,
-        if (strokeWidth != null) 'strokeWidth': strokeWidth,
+        'content': ?content,
+        'color': ?colorHex,
+        'opacity': ?opacity,
+        'strokeWidth': ?strokeWidth,
         'visibility': visibility,
-        if (documentVersion != null) 'documentVersion': documentVersion,
+        'documentVersion': ?documentVersion,
       },
       options: Options(validateStatus: (s) => s != null && s < 500),
     );
@@ -99,13 +99,13 @@ class AnnotationsService {
     final resp = await _dio.patch(
       '/documents/$documentId/annotations/$annotationId',
       data: {
-        if (content != null) 'content': content,
-        if (colorHex != null) 'color': colorHex,
-        if (opacity != null) 'opacity': opacity,
-        if (x != null) 'x': x,
-        if (y != null) 'y': y,
-        if (width != null) 'width': width,
-        if (height != null) 'height': height,
+        'content': ?content,
+        'color': ?colorHex,
+        'opacity': ?opacity,
+        'x': ?x,
+        'y': ?y,
+        'width': ?width,
+        'height': ?height,
       },
       options: Options(validateStatus: (s) => s != null && s < 500),
     );

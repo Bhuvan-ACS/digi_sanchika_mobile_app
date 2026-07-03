@@ -5,7 +5,6 @@ import 'package:digi_sanchika/models/app_view_mode.dart';
 import 'package:digi_sanchika/models/document.dart';
 import 'package:digi_sanchika/models/shared_folder.dart';
 import 'package:digi_sanchika/presentations/Screens/shared_folder_screen.dart';
-import 'package:digi_sanchika/services/folder_service.dart';
 import 'package:digi_sanchika/services/shared_browse_service.dart';
 import 'package:digi_sanchika/services/shared_documents_service.dart';
 import 'package:digi_sanchika/services/shared_folders_service.dart';
@@ -30,7 +29,7 @@ List<SharedFolder> _filteredFolders = [];
   final SharedDocumentsService _sharedService = SharedDocumentsService();
   final SharedFoldersService _foldersService = SharedFoldersService();
   final TextEditingController _searchController = TextEditingController();
-  String _selectedFileType = 'All';
+  final String selectedFileType = 'All';
   
 
   AppViewMode _currentViewMode = AppViewMode.list;
@@ -93,16 +92,16 @@ List<SharedFolder> _filteredFolders = [];
     _expandedStates.clear();
   }
 
-  Map<String, bool> _expandedStates = {};
+  final Map<String, bool> _expandedStates = {};
 
   bool _isLoading = true;
-  bool _hasError = false;
-  bool _isDownloading = false;
-  String _errorMessage = '';
+  bool hasError = false;
+  // final bool _isDownloading = false;
+  String errorMessage = '';
   
-  int _totalDocuments = 0;
-  int _totalFolders = 0;
-    List<String> _availableFileTypes = [
+  int totalDocuments = 0;
+  int totalFolders = 0;
+    List<String> availableFileTypes = [
     'All',
   ]; // Will be populated from documents
 
@@ -115,8 +114,8 @@ List<SharedFolder> _filteredFolders = [];
 
     setState(() {
       _isLoading = true;
-      _hasError = false;
-      _errorMessage = '';
+      hasError = false;
+      errorMessage = '';
     });
 
     try {
@@ -125,8 +124,8 @@ List<SharedFolder> _filteredFolders = [];
       if (!isLoggedIn) {
         if (mounted) {
           setState(() {
-            _hasError = true;
-            _errorMessage = 'Please login to view shared documents';
+            hasError = true;
+            errorMessage = 'Please login to view shared documents';
             _isLoading = false;
           });
         }
@@ -158,9 +157,9 @@ final folders = await _foldersService.fetchSharedFolders();
   _sharedFolders = folders;
   _filteredFolders = List.from(folders);
 
-  _totalDocuments = documents.length;
-  _totalFolders = folders.length;
-  _availableFileTypes = ['All', ...fileTypes];
+  totalDocuments = documents.length;
+  totalFolders = folders.length;
+  availableFileTypes = ['All', ...fileTypes];
   _isLoading = false;
 });
 
@@ -193,19 +192,19 @@ final folders = await _foldersService.fetchSharedFolders();
       if (mounted) {
         setState(() {
           _sharedDocuments = localDocs;
-          _totalDocuments = localDocs.length;
-          _totalFolders = 0;
-          _availableFileTypes = ['All', ...fileTypes];
-          _hasError = true;
-          _errorMessage = 'Using cached data. No internet connection.';
+          totalDocuments = localDocs.length;
+          totalFolders = 0;
+          availableFileTypes = ['All', ...fileTypes];
+          hasError = true;
+          errorMessage = 'Using cached data. No internet connection.';
           _isLoading = false;
         });
       }
     } catch (localError) {
       if (mounted) {
         setState(() {
-          _hasError = true;
-          _errorMessage =
+          hasError = true;
+          errorMessage =
               'Failed to load data. Please check your internet connection.';
           _isLoading = false;
         });
@@ -349,7 +348,42 @@ void _clearSearch() {
             SizedBox(height: r.p(10)),
 
         Expanded(
-  child:  ListView.builder(
+  child:  _filteredFolders.isEmpty
+      ? Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.folder_off_outlined,
+                size: r.p(70),
+                color: Colors.grey.shade400,
+              ),
+         
+              Text(
+                _searchController.text.isEmpty
+                    ? 'No shared folders available'
+                    : 'No folders found',
+                style: TextStyle(
+                  fontSize: r.sp(16),
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey.shade700,
+                ),
+              ),
+              SizedBox(height: r.p(8)),
+              Text(
+                _searchController.text.isEmpty
+                    ? 'Folders shared with you will appear here.'
+                    : 'Try a different search term.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: r.sp(13),
+                  color: Colors.grey.shade500,
+                ),
+              ),
+            ],
+          ),
+        )
+      : ListView.builder(
           itemCount: _filteredFolders.length,
           itemBuilder: (context, index) {
             final folder = _filteredFolders[index];
@@ -416,18 +450,7 @@ void _clearSearch() {
     );
   }
 
-   void _openSharedFolder(SharedFolder folder) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => SharedFolderScreen(
-          folderId: folder.id,
-          folderName: folder.name,
-          userName: folder.owner,
-        ),
-      ),
-    );
-  }
+  
 
  String _getExpiryText(String? expiryDate) {
   if (expiryDate == null ||

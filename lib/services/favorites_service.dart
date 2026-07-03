@@ -59,7 +59,7 @@ class FavoritesService {
       'entity_id': entityId,
       'entityType': effectiveType,
       'entity_type': effectiveType,
-      if (name != null) 'name': name,
+      'name': ?name,
     };
   }
 

@@ -70,7 +70,7 @@ class _FolderTreeWidgetState extends State<FolderTreeWidget>
       width: 38,
       height: 38,
       decoration: BoxDecoration(
-        color: isSelected ? tint : tint.withOpacity(0.12),
+        color: isSelected ? tint : tint.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Icon(
@@ -495,7 +495,7 @@ class FolderGridWidget extends StatelessWidget {
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
+                  color: Colors.black.withValues(alpha: 0.05),
                   blurRadius: 6,
                   offset: const Offset(0, 2),
                 ),
@@ -512,7 +512,7 @@ class FolderGridWidget extends StatelessWidget {
                   width: 50, // Fixed width for icon container
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(16),
-                    color: tint.withOpacity(isSelected ? 0.18 : 0.12),
+                    color: tint.withValues(alpha: isSelected ? 0.18 : 0.12),
                   ),
                   child: Icon(
                     folder.children.isNotEmpty

@@ -1,6 +1,4 @@
-import 'package:buttons_tabbar/buttons_tabbar.dart';
 import 'package:digi_sanchika/presentations/Screens/shared_folder_folder_screen.dart';
-import 'package:digi_sanchika/presentations/Screens/shared_folder_screen.dart';
 import 'package:digi_sanchika/presentations/Screens/shared_files_screen.dart';
 import 'package:digi_sanchika/utils/app_fonts.dart';
 import 'package:flutter/material.dart';
@@ -46,14 +44,10 @@ class _SharedWithMeScreenState extends State<SharedWithMeScreen> with SingleTick
           bottom: TabBar(
           controller: _tabController, labelColor: Colors.indigo,
   unselectedLabelColor: Colors.black54,
-
+indicatorColor: Colors.indigo,
   // Text styles
- 
           labelStyle: w600_16Poppins(),
-          unselectedLabelStyle: w400_16Poppins(),
-
-
-
+          unselectedLabelStyle: w500_14Poppins(color: Colors.grey.shade400),
           tabs: const [
             Tab(
               child: Row(
@@ -64,13 +58,12 @@ class _SharedWithMeScreenState extends State<SharedWithMeScreen> with SingleTick
                   Text("Files"),
                 ],
               ),
-            
             ),
             Tab(
                child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.folder_copy_sharp, size: 16),
+                  Icon(Icons.folder_open, size: 16),
                   SizedBox(width: 6),
                   Text("Folders"),
                 ],
@@ -82,7 +75,6 @@ class _SharedWithMeScreenState extends State<SharedWithMeScreen> with SingleTick
       body:Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children:  [
-
       Expanded(
         child: TabBarView(
           controller: _tabController,

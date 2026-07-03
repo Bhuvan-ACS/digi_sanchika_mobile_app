@@ -57,10 +57,10 @@ class FolderAlertsService {
     final resp = await _dio.put(
       '$_foldersBasePath/$folderId/alert',
       data: {
-        if (onAdd != null) 'onAdd': onAdd,
-        if (onDelete != null) 'onDelete': onDelete,
-        if (onShare != null) 'onShare': onShare,
-        if (onEdit != null) 'onEdit': onEdit,
+        'onAdd': ?onAdd,
+        'onDelete': ?onDelete,
+        'onShare': ?onShare,
+        'onEdit': ?onEdit,
       },
     );
     if (resp.statusCode != 200) return null;

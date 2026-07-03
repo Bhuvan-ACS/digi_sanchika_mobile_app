@@ -1,5 +1,6 @@
 // ignore_for_file: use_build_context_synchronously, unnecessary_this
 import 'package:digi_sanchika/local_storage.dart';
+import 'package:digi_sanchika/utils/app_fonts.dart';
 import 'package:digi_sanchika/utils/responsive_helper.dart';
 import 'package:digi_sanchika/utils/design_tokens.dart';
 import 'package:digi_sanchika/services/upload_service.dart';
@@ -837,8 +838,9 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
                               SizedBox(height: r.p(2)),
                               Text(
                                 () {
-                                  if (isLoadingChildren)
+                                  if (isLoadingChildren) {
                                     return 'Loading subfolders…';
+                                  }
                                   if (hasLoadedChildren) {
                                     final c = node.children.length;
                                     return '$c subfolder${c == 1 ? '' : 's'}';
@@ -1377,8 +1379,9 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
   String _shareUserSubtitle(Map<String, dynamic> u) {
     final employeeId = (u['employee_id'] ?? u['emp_id'] ?? '').toString();
     final email = (u['email'] ?? u['email_address'] ?? '').toString();
-    if (employeeId.isNotEmpty && email.isNotEmpty)
+    if (employeeId.isNotEmpty && email.isNotEmpty) {
       return '$employeeId • $email';
+    }
     if (employeeId.isNotEmpty) return employeeId;
     if (email.isNotEmpty) return email;
     return '';
@@ -2649,9 +2652,21 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
   Widget build(BuildContext context) {
     final r = context.r;
     final layout = AppLayout.of(context);
-    return DismissKeyboard(
-      child: Container(
-        color: Colors.white,
+    return Scaffold(
+      // backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        title:  Text('Upload Files',style: w700_20Poppins(color: Colors.indigo),),
+       actions: [
+          IconButton(
+            icon: const Icon(Icons.close, color: Colors.indigo),
+            onPressed: () => Navigator.pop(context),
+          ),
+       ],
+        backgroundColor: Colors.white,
+      ),
+      body: Container(
+        color: Colors.transparent,
         child: SingleChildScrollView(
           padding: EdgeInsets.symmetric(
             horizontal: layout.gutter,
@@ -2663,20 +2678,9 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Title
-                  Text(
-                    'Upload Files',
-                    style: TextStyle(
-                      fontSize: r.sp(24),
-                      fontWeight: FontWeight.bold,
-                      color: Colors.indigo,
-                    ),
-                  ),
-                  SizedBox(height: r.p(20)),
-
                   // Upload Type Selection
                   Card(
-                    elevation: 2,
+                    elevation: 0.5,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(r.p(12)),
                     ),
@@ -2705,15 +2709,15 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
                                             ? null
                                             : _pickSingleFile,
                                         icon: const Icon(
-                                          Icons.insert_drive_file,
+                                          Icons.insert_drive_file_outlined,
                                         ),
                                         label: const Text('Single File'),
                                         style: OutlinedButton.styleFrom(
                                           padding: EdgeInsets.symmetric(
                                             vertical: r.p(12),
                                           ),
-                                          side: const BorderSide(
-                                            color: Colors.indigo,
+                                          side:  BorderSide(
+                                            color: Colors.grey.shade400,
                                           ),
                                         ),
                                       ),
@@ -2725,14 +2729,14 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
                                         onPressed: _isLoading
                                             ? null
                                             : _pickMultipleFiles,
-                                        icon: const Icon(Icons.folder_copy),
+                                        icon: const Icon(Icons.folder_copy_outlined),
                                         label: const Text('Multiple Files'),
                                         style: OutlinedButton.styleFrom(
                                           padding: EdgeInsets.symmetric(
                                             vertical: r.p(12),
                                           ),
-                                          side: const BorderSide(
-                                            color: Colors.indigo,
+                                          side:  BorderSide(
+                                            color: Colors.grey.shade400,
                                           ),
                                         ),
                                       ),
@@ -2744,14 +2748,14 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
                                         onPressed: _isLoading
                                             ? null
                                             : _pickFolder,
-                                        icon: const Icon(Icons.folder),
+                                        icon: const Icon(Icons.folder_outlined),
                                         label: const Text('Entire Folder'),
                                         style: OutlinedButton.styleFrom(
                                           padding: EdgeInsets.symmetric(
                                             vertical: r.p(12),
                                           ),
-                                          side: const BorderSide(
-                                            color: Colors.indigo,
+                                          side:  BorderSide(
+                                            color: Colors.grey.shade400,
                                           ),
                                           foregroundColor: Colors.indigo,
                                         ),
@@ -2829,9 +2833,7 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
                       ),
                     ),
                   ),
-
-                  SizedBox(height: r.p(24)),
-
+            height10,
                   if (_uploadedFiles.isNotEmpty) ...[
                     SizedBox(height: r.p(24)),
                     Text(
@@ -2865,10 +2867,9 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
                       ),
                     ),
                   ],
-
-                  SizedBox(height: r.p(24)),
-                  const Divider(),
-
+            
+                 height10,
+            
                   // Document Details Section
                   Text(
                     'Document Details',
@@ -2877,11 +2878,10 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  SizedBox(height: r.p(16)),
-
-                  // Destination Folder Dropdown with Create Folder option
+                  height10,
                   Card(
-                    elevation: 2,
+                   color: Colors.white,
+                   elevation: 0.5,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(r.p(12)),
                     ),
@@ -2970,7 +2970,7 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
                                   onPressed: () =>
                                       _navigateToFolderManager(context),
                                   icon: Icon(
-                                    Icons.create_new_folder_rounded,
+                                    Icons.create_new_folder_outlined,
                                     size: r.sp(18),
                                   ),
                                   label: const Text('Create'),
@@ -3004,7 +3004,7 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
                     ),
                   ),
                   SizedBox(height: r.p(16)),
-
+            
                   // Classification Dropdown with specified options
                   DropdownButtonFormField<String>(
                     initialValue: _selectedClassification,
@@ -3016,9 +3016,12 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
                       ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(r.p(8)),
+                        borderSide: BorderSide(
+                          color: Colors.grey.shade400,
+                        ),
                       ),
                       filled: true,
-                      fillColor: Colors.grey.shade50,
+                      fillColor: Colors.white,
                     ),
                     items:
                         const [
@@ -3043,26 +3046,28 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
                       }
                     },
                   ),
-
+            
                   SizedBox(height: r.p(16)),
-
+            
                   // Keywords Text Field
                   TextField(
                     controller: _keywordsController,
                     decoration: InputDecoration(
                       labelText: 'Keywords',
+                      labelStyle: w400_14Poppins(color: Colors.grey.shade600),
                       hintText: 'Enter keywords separated by commas',
-                      prefixIcon: const Icon(Icons.label, color: Colors.indigo),
+                      hintStyle: w400_14Poppins(color: Colors.grey.shade300),
+                      prefixIcon: const Icon(Icons.label_important_outline, color: Colors.indigo),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(r.p(8)),
                       ),
                       filled: true,
-                      fillColor: Colors.grey.shade50,
+                      fillColor: Colors.white,
                     ),
                   ),
-
+            
                   SizedBox(height: r.p(16)),
-
+            
                   // Remarks Description Box
                   TextField(
                     controller: _remarksController,
@@ -3071,7 +3076,7 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
                       labelText: 'Remarks',
                       hintText: 'Enter description or remarks',
                       prefixIcon: const Icon(
-                        Icons.description,
+                        Icons.description_outlined,
                         color: Colors.indigo,
                       ),
                       border: OutlineInputBorder(
@@ -3082,18 +3087,15 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
                       alignLabelWithHint: true,
                     ),
                   ),
-
+            
                   SizedBox(height: r.p(16)),
-
-                  SizedBox(height: r.p(16)),
-
-                  // Sharing Type Dropdown
+            
                   DropdownButtonFormField<String>(
                     isExpanded: true,
                     initialValue: _selectedSharingType,
                     decoration: InputDecoration(
                       labelText: 'Sharing',
-                      prefixIcon: const Icon(Icons.share, color: Colors.indigo),
+                      prefixIcon: const Icon(Icons.share_outlined, color: Colors.indigo),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(r.p(8)),
                       ),
@@ -3169,7 +3171,7 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
                             _shareWithSpecificUsers = true;
                           }
                         });
-
+            
                         if (value == 'Specific Users') {
                           WidgetsBinding.instance.addPostFrameCallback((
                             _,
@@ -3188,9 +3190,9 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
                       }
                     },
                   ),
-
-                  SizedBox(height: r.p(32)),
-
+            
+                 height10,
+            
                   if (_selectedSharingType == 'Private') ...[
                     SwitchListTile.adaptive(
                       contentPadding: EdgeInsets.zero,
@@ -3224,7 +3226,7 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
                       ),
                     SizedBox(height: r.p(12)),
                   ],
-
+            
                   if (_selectedSharingType == 'Specific Users') ...[
                     ListTile(
                       contentPadding: EdgeInsets.zero,
@@ -3250,9 +3252,9 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
                     ),
                     SizedBox(height: r.p(12)),
                   ],
-
+            
                   SizedBox(height: r.p(16)),
-
+            
                   // Upload Document Button
                   SizedBox(
                     width: double.infinity,
@@ -3260,7 +3262,7 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
                       onPressed: (_isLoading || _foldersLoading)
                           ? null
                           : _uploadDocument,
-                      icon: Icon(Icons.cloud_upload, size: r.sp(24)),
+                      icon: Icon(Icons.cloud_upload_outlined, size: r.sp(24)),
                       label: _isLoading
                           ? SizedBox(
                               width: r.p(20),

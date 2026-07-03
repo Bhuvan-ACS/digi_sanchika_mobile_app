@@ -1,6 +1,5 @@
 ﻿import 'package:digi_sanchika/utils/app_fonts.dart';
 import 'package:digi_sanchika/utils/app_theme.dart';
-import 'package:digi_sanchika/utils/screen_utils.dart' hide height5;
 import 'package:flutter/material.dart';
 import 'package:digi_sanchika/utils/responsive_helper.dart';
 import 'package:digi_sanchika/services/folder_service.dart';
@@ -87,14 +86,14 @@ class _FolderScreenState extends State<FolderScreen> {
   List<Document> documents = [];
   List<Folder> subfolders = [];
   bool _isLoading = true;
-  bool _isDownloading = false;
+  bool isDownloading = false;
   String _errorMessage = '';
   final TextEditingController _searchController = TextEditingController();
-  bool _showRecent = false;
+  final bool _showRecent = false;
 
   // Add these variables for layout modes (same as HomePage)
   AppViewMode _currentViewMode = AppViewMode.list;
-  Map<String, bool> _expandedStates = {};
+  final Map<String, bool> _expandedStates = {};
 
   final FavoritesService _favoritesService = FavoritesService();
   final Map<String, String> _favoriteDocumentMap =
@@ -153,12 +152,12 @@ class _FolderScreenState extends State<FolderScreen> {
   Future<void> _loadShareUsers() async {
     try {
       final users = await FolderService.getUsersForSharing();
-      if (users != null && users.isNotEmpty) {
+      if (users.isNotEmpty) {
         setState(() {
           _shareUsers = users
               .map(
                 (user) => ShareUser(
-                  id: user.id?.isNotEmpty == true ? user.id! : 'unknown',
+                  id: user.id.isNotEmpty == true ? user.id : 'unknown',
                   name: user.name?.isNotEmpty == true
                       ? user.name!
                       : 'Unknown User',
@@ -273,7 +272,6 @@ class _FolderScreenState extends State<FolderScreen> {
   void _showTopMessage(String message) {
     if (!mounted) return;
     final overlay = Overlay.of(context);
-    if (overlay == null) return;
 
     late OverlayEntry entry;
     entry = OverlayEntry(
@@ -351,29 +349,7 @@ class _FolderScreenState extends State<FolderScreen> {
     }
   }
 
-  void _showDeleteConfirmation(BuildContext context, int index) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Document'),
-        content: const Text('Are you sure you want to delete this document?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              _deleteDocument(index);
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-  }
+
 
   void _showDeleteOptions(BuildContext context, int index, Document document) {
     showDialog(
@@ -411,7 +387,7 @@ class _FolderScreenState extends State<FolderScreen> {
 
   void _showPermanentDeleteConfirmation(Document document) {
     if (!mounted) return;
-    final dialogContext = this.context;
+    final dialogContext = context;
     showDialog(
       context: dialogContext,
       builder: (ctx) => AlertDialog(
@@ -455,7 +431,7 @@ class _FolderScreenState extends State<FolderScreen> {
                     await _loadFolderContents();
                   } catch (_) {}
                   if (!mounted) return;
-                  ScaffoldMessenger.of(this.context).showSnackBar(
+                  ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text('"${document.name}" permanently deleted'),
                       backgroundColor: AppColors.error,
@@ -463,7 +439,7 @@ class _FolderScreenState extends State<FolderScreen> {
                   );
                 } else {
                   if (!mounted) return;
-                  ScaffoldMessenger.of(this.context).showSnackBar(
+                  ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(
                         (direct['error'] ??
@@ -477,7 +453,7 @@ class _FolderScreenState extends State<FolderScreen> {
                 }
               } catch (e) {
                 if (!mounted) return;
-                ScaffoldMessenger.of(this.context).showSnackBar(
+                ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text('Error: $e'),
                     backgroundColor: AppColors.error,
@@ -556,7 +532,7 @@ class _FolderScreenState extends State<FolderScreen> {
     }
 
     setState(() {
-      _isDownloading = true;
+      isDownloading = true;
     });
 
     try {
@@ -609,7 +585,7 @@ class _FolderScreenState extends State<FolderScreen> {
     } finally {
       if (mounted) {
         setState(() {
-          _isDownloading = false;
+          isDownloading = false;
         });
       }
     }
@@ -1645,21 +1621,6 @@ class _FolderScreenState extends State<FolderScreen> {
     }
   }
 
-  // ADD THIS METHOD HERE
-  String _getViewModeLabel(AppViewMode mode) {
-    switch (mode) {
-      case AppViewMode.list:
-        return 'List';
-      case AppViewMode.grid2x2:
-        return 'Grid 2×2';
-      case AppViewMode.grid3x3:
-        return 'Grid 3×3';
-      case AppViewMode.compact:
-        return 'Compact';
-      case AppViewMode.detailed:
-        return 'Detailed';
-    }
-  }
 
   Widget _buildSubfoldersSection(List<Folder> folders) {
     if (folders.isEmpty) return const SizedBox.shrink();
@@ -2209,21 +2170,25 @@ class _FolderScreenState extends State<FolderScreen> {
     if (_isLoading) {
       return DismissKeyboard(
         child: Scaffold(
+            backgroundColor:Colors.grey.shade100,
+
           appBar: AppBar(
             leading: IconButton(
-              icon: const Icon(Icons.arrow_back, color: Colors.white),
-              onPressed: _goBack,
+              icon: const Icon(Icons.arrow_back, color: Colors.black87),
+              onPressed: (){
+                Navigator.pop(context);
+              },
             ),
             title: Text(
               widget.folderName,
-              style: TextStyle(fontSize: r.sp(19)),
+             style:w500_14Poppins(),
             ),
-            backgroundColor: const Color.fromARGB(255, 43, 65, 189),
+            backgroundColor:Colors.grey.shade100,
             actions: [
               _buildLayoutSelector(),
               SizedBox(width: r.p(8)),
               IconButton(
-                icon: const Icon(Icons.refresh, color: Colors.white),
+                icon: const Icon(Icons.refresh, color: Colors.black87),
                 onPressed: _loadFolderContents,
               ),
             ],
@@ -2236,21 +2201,26 @@ class _FolderScreenState extends State<FolderScreen> {
     if (_errorMessage.isNotEmpty) {
       return DismissKeyboard(
         child: Scaffold(
+            backgroundColor:Colors.grey.shade100,
+
           appBar: AppBar(
             leading: IconButton(
-              icon: const Icon(Icons.arrow_back, color: Colors.white),
-              onPressed: _goBack,
+              icon: const Icon(Icons.arrow_back, color: Colors.black87),
+              onPressed: () {
+                Navigator.pop(context);
+              },
             ),
             title: Text(
               widget.folderName,
-              style: TextStyle(fontSize: r.sp(19)),
+            style:w500_14Poppins(),
             ),
-            backgroundColor: const Color.fromARGB(255, 43, 65, 189),
+                     backgroundColor:Colors.grey.shade100,
+
             actions: [
               _buildLayoutSelector(),
               SizedBox(width: r.p(8)),
               IconButton(
-                icon: const Icon(Icons.refresh, color: Colors.white),
+                icon: const Icon(Icons.refresh, color: Colors.black87),
                 onPressed: _loadFolderContents,
               ),
             ],
@@ -2264,30 +2234,31 @@ class _FolderScreenState extends State<FolderScreen> {
 
     return DismissKeyboard(
       child: Scaffold(
+            backgroundColor:Colors.grey.shade100,
+
         appBar: AppBar(
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.white),
-            onPressed: _goBack,
+            icon: const Icon(Icons.arrow_back, color: Colors.black87),
+            onPressed: () {
+              Navigator.pop(context);
+            },
           ),
           title: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 widget.folderName,
-                style: TextStyle(
-                  fontSize: r.sp(18),
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
+              style:w500_14Poppins(),
               ),
               if (widget.parentFolderName != null)
                 Text(
                   'In: ${widget.parentFolderName}',
-                  style: TextStyle(fontSize: r.sp(12), color: Colors.white70),
+                  style:w500_14Poppins(),
                 ),
             ],
           ),
-          backgroundColor: const Color.fromARGB(255, 43, 65, 189),
+                   backgroundColor:Colors.grey.shade100,
+
           elevation: 0,
           actions: [
             _buildLayoutSelector(),
@@ -2295,7 +2266,7 @@ class _FolderScreenState extends State<FolderScreen> {
             IconButton(
               icon: const Icon(
                 Icons.notifications_active_outlined,
-                color: Colors.white,
+                color: Colors.black87,
               ),
               tooltip: 'Folder alerts',
               onPressed: () => FolderAlertSheet.show(
@@ -2305,7 +2276,7 @@ class _FolderScreenState extends State<FolderScreen> {
               ),
             ),
             IconButton(
-              icon: const Icon(Icons.refresh, color: Colors.white),
+              icon: const Icon(Icons.refresh, color: Colors.black87),
               onPressed: _loadFolderContents,
             ),
           ],
@@ -2658,35 +2629,6 @@ class _FolderScreenState extends State<FolderScreen> {
     );
   }
 
-  // Helper method for document icons
-  IconData _getDocumentIcon(String fileType) {
-    final docIcons = {
-      'PDF': Icons.picture_as_pdf,
-      'DOCX': Icons.description,
-      'XLSX': Icons.table_chart,
-      'PPTX': Icons.slideshow,
-      'TXT': Icons.text_snippet,
-      'XLS': Icons.table_chart,
-      'PPT': Icons.slideshow,
-      'DOC': Icons.description,
-    };
-    return docIcons[fileType.toUpperCase()] ?? Icons.insert_drive_file;
-  }
-
-  // Helper method for document colors
-  Color _getDocumentColor(String fileType) {
-    final docColors = {
-      'PDF': AppColors.filePdf,
-      'DOCX': AppColors.fileWord,
-      'XLSX': AppColors.fileExcel,
-      'PPTX': AppColors.filePpt,
-      'TXT': AppColors.fileText,
-      'PPT': AppColors.filePpt,
-      'XLS': AppColors.fileExcel,
-      'DOC': AppColors.fileWord,
-    };
-    return docColors[fileType.toUpperCase()] ?? AppColors.primary;
-  }
 
   // Helper method for detail rows
   Widget _buildDetailRow(String label, String value, IconData icon) {
@@ -2732,39 +2674,7 @@ class _FolderScreenState extends State<FolderScreen> {
     }
   }
 
-  Widget _buildEmptyState() {
-    final r = context.r;
-    return Center(
-      child: Padding(
-        padding: EdgeInsets.all(r.p(32)),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.folder_open,
-              size: r.sp(80),
-              color: AppColors.textDisabled,
-            ),
-            SizedBox(height: r.p(20)),
-            Text(
-              'No Documents in This Folder',
-              style: TextStyle(
-                fontSize: r.sp(20),
-                fontWeight: FontWeight.bold,
-                color: Colors.grey,
-              ),
-            ),
-            SizedBox(height: r.p(10)),
-            Text(
-              'Upload documents or check subfolders',
-              style: TextStyle(fontSize: r.sp(14), color: AppColors.textTertiary),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+ 
 
   List<Document> _getFilteredDocuments() {
     List<Document> allDocs = List.from(documents);

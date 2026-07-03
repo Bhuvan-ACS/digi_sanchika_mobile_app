@@ -565,7 +565,7 @@ class _ShareAccessSheetWidgetState extends State<_ShareAccessSheetWidget>
             children: [
               Expanded(
                 child: DropdownButtonFormField<String>(
-                  value: _permission,
+                  initialValue: _permission,
                   items: const [
                     DropdownMenuItem(value: 'view', child: Text('View')),
                     DropdownMenuItem(value: 'edit', child: Text('Edit')),
@@ -655,7 +655,7 @@ class _ShareAccessSheetWidgetState extends State<_ShareAccessSheetWidget>
               children: [
                 Expanded(
                   child: DropdownButtonFormField<String>(
-                    value: _expiryMode,
+                    initialValue: _expiryMode,
                     items: const [
                       DropdownMenuItem(value: 'none', child: Text('No expiry')),
                       DropdownMenuItem(value: 'hours', child: Text('Expiry: Hours')),
@@ -715,7 +715,7 @@ class _ShareAccessSheetWidgetState extends State<_ShareAccessSheetWidget>
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: DropdownButtonFormField<int>(
-                value: (_expiryHours != null && _expiryHours! >= 1 && _expiryHours! <= 24)
+                initialValue: (_expiryHours != null && _expiryHours! >= 1 && _expiryHours! <= 24)
                     ? _expiryHours
                     : 1,
                 items: List.generate(
@@ -748,7 +748,7 @@ class _ShareAccessSheetWidgetState extends State<_ShareAccessSheetWidget>
                 children: [
                   Expanded(
                     child: DropdownButtonFormField<String>(
-                      value: _daysPreset == 'none' ? '1' : _daysPreset,
+                      initialValue: _daysPreset == 'none' ? '1' : _daysPreset,
                       items: [
                         for (final d in dayOptions)
                           DropdownMenuItem(
@@ -1122,7 +1122,7 @@ class _ShareAccessSheetWidgetState extends State<_ShareAccessSheetWidget>
             children: [
               Expanded(
                 child: DropdownButtonFormField<String>(
-                  value: _permission,
+                  initialValue: _permission,
                   items: const [
                     DropdownMenuItem(value: 'view', child: Text('View')),
                     DropdownMenuItem(value: 'edit', child: Text('Edit')),
@@ -1174,7 +1174,7 @@ class _ShareAccessSheetWidgetState extends State<_ShareAccessSheetWidget>
             children: [
               Expanded(
                 child: DropdownButtonFormField<String>(
-                  value: _expiryMode,
+                  initialValue: _expiryMode,
                   items: const [
                     DropdownMenuItem(value: 'none', child: Text('Expiry: Default')),
                     DropdownMenuItem(value: 'hours', child: Text('Expiry: Hours')),

@@ -49,8 +49,8 @@ class EditRequestsService {
       data: {
         if (reviewNotes != null && reviewNotes.trim().isNotEmpty)
           'reviewNotes': reviewNotes.trim(),
-        if (expiresInHours != null) 'expiresInHours': expiresInHours,
-        if (expiresInHours != null) 'expires_in_hours': expiresInHours,
+        'expiresInHours': ?expiresInHours,
+        'expires_in_hours': ?expiresInHours,
       },
     );
     return response.statusCode == 200;
