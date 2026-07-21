@@ -1607,6 +1607,8 @@ ProfileScreen(
       );
 
     return Scaffold(
+        backgroundColor: Colors.grey.shade100,
+
       appBar:AppBar(
         automaticallyImplyLeading: false,
         title: getTitle(currentIndex),
@@ -1703,7 +1705,7 @@ ProfileScreen(
             color: Colors.black.withAlpha(30),
           ),
         ),
-      if (_showProfileDrawer) _buildProfileSidebar(),
+      // if (_showProfileDrawer) _buildProfileSidebar(),
     ],
   ),
     );

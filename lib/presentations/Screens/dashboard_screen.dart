@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:digi_sanchika/local_storage.dart';
 import 'package:digi_sanchika/models/document.dart';
 import 'package:digi_sanchika/models/folder.dart';
 import 'package:digi_sanchika/models/folder_tree_node.dart';
+import 'package:digi_sanchika/presentations/Screens/document_scan_screen.dart';
 import 'package:digi_sanchika/presentations/Screens/recent_activity_widget.dart';
 import 'package:digi_sanchika/presentations/Screens/shared_with_me_screen.dart';
 import 'package:digi_sanchika/presentations/Screens/upload_document.dart';
@@ -489,50 +491,95 @@ child: Padding(
   child: Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-        TextField(
-        
-          controller: _searchController,
-          focusNode: _searchFocusNode,
-          onChanged: _onSearchChanged,
-          onSubmitted: (value) {
-            final q = value.trim();
-            if (q.isNotEmpty) {
-              _dismissKeyboard();
-              _performSearch(q);
-            }
-          },
-          textInputAction: TextInputAction.search,
-          style: w400_14Poppins(),
-          onTapOutside: (_) => _dismissKeyboard(),
-          decoration: InputDecoration(
-            fillColor: Colors.white,
-            hintText: 'Search documents…',
-            hintStyle: w500_14Poppins(color: Colors.grey.shade700),
-            prefixIcon: _isSearching
-                ? Padding(
-                    padding: EdgeInsets.all(12),
-                    child: SizedBox(
-                      width:18.w,
-                      height: 18.h,
-                      child: const CircularProgressIndicator(
-                        strokeWidth: 2,
-                      ),
-                    ),
-                  )
-                : Icon(
-                    Icons.search,
-                    color: Colors.indigo,
-                    size: 22,
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _searchController,
+                focusNode: _searchFocusNode,
+                onChanged: _onSearchChanged,
+                onSubmitted: (value) {
+                  final q = value.trim();
+                  if (q.isNotEmpty) {
+                    _dismissKeyboard();
+                    _performSearch(q);
+                  }
+                },
+                textInputAction: TextInputAction.search,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontFamily: 'Poppins',
+                  fontWeight: FontWeight.w400,
+                ),
+                onTapOutside: (_) => _dismissKeyboard(),
+                decoration: InputDecoration(
+                  filled: true,
+                  fillColor: Colors.white,
+                  hintText: 'Search documents, people, tags…',
+                  hintStyle: TextStyle(
+                    fontSize: 13,
+                    fontFamily: 'Poppins',
+                    fontWeight: FontWeight.w400,
+                    color: Colors.grey.shade500,
                   ),
-            suffixIcon: _searchController.text.isNotEmpty
-                ? IconButton(
-                    icon: Icon(Icons.clear, size: 20),
-                    onPressed: _clearSearch,
-                  )
-                : null,
-            contentPadding: EdgeInsets.symmetric(vertical: 12),
-            isDense: true,
-          ),
+                  prefixIcon: _isSearching
+                      ? Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: const CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      : const Icon(Icons.search, color: Colors.indigo, size: 22),
+                  suffixIcon: _searchController.text.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear, size: 18),
+                          onPressed: _clearSearch,
+                        )
+                      : Icon(Icons.mic_none_rounded,
+                          color: Colors.indigo, size: 22),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 13),
+                  isDense: true,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Colors.indigo, width: 1.2),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            // Blue "+" action button
+            GestureDetector(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => UploadDocumentTab(
+                    onDocumentUploaded: widget.onDocumentUploaded,
+                    folders: widget.folders,
+                    userName: widget.userName,
+                  ),
+                ),
+              ),
+              child: Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: Colors.indigo,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.add, color: Colors.white, size: 26),
+              ),
+            ),
+          ],
         ),
         height15,
         Row(
@@ -542,56 +589,94 @@ child: Padding(
               title: "Upload",
               subtitle: "Document",
               iconBackground: const Color.fromARGB(255, 224, 228, 253),
-              iconColor: Colors.indigo, onTap: () {
-                Navigator.push(context, MaterialPageRoute(builder: (context)=>UploadDocumentTab(onDocumentUploaded: widget.onDocumentUploaded, folders: widget.folders,userName: widget.userName,)));
+              iconColor: Colors.indigo,
+              onTap: () {
+                Navigator.push(context, MaterialPageRoute(builder: (context) => UploadDocumentTab(onDocumentUploaded: widget.onDocumentUploaded, folders: widget.folders, userName: widget.userName)));
               },
             ),
-            width5,
-            width2,
-    UploadDocument(
-          icon: Icons.qr_code_scanner,
-          title: "Scan",
-          subtitle: "Document",
-          iconBackground:  const Color.fromARGB(255, 228, 251, 228),
-          iconColor: Colors.green, onTap: () {
-            // Navigator.push(context, MaterialPageRoute(builder: (context)=>UploadDocumentTab(onDocumentUploaded: widget.onDocumentUploaded, folders: widget.folders,userName: widget.userName,)));
-          },
-        ),
-         width5,
-            width2,
-           
-         UploadDocument(
-          icon: Icons.folder_open,
-          title: "New Folder",
-          subtitle: "Create",
-          iconBackground:  const Color.fromARGB(255, 253, 238, 215),
-          iconColor: Colors.orange, onTap: () {
-            _createFolder(_currentFolder);
-            // Navigator.push(context, MaterialPageRoute(builder: (context)=>UploadDocumentTab(onDocumentUploaded: widget.onDocumentUploaded, folders: widget.folders,userName: widget.userName,)));
-          },
-        ),
+            const SizedBox(width: 10),
+            UploadDocument(
+              icon: Icons.qr_code_scanner,
+              title: "Scan",
+              subtitle: "Document",
+              iconBackground: const Color.fromARGB(255, 228, 251, 228),
+              iconColor: Colors.green,
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => DocumentScanScreen(
+                      onScannedFileReady: (File savedFile) {},
+                      folders: widget.folders,
+                      userName: widget.userName,
+                    ),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(width: 10),
+            UploadDocument(
+              icon: Icons.folder_open,
+              title: "New Folder",
+              subtitle: "Create",
+              iconBackground: const Color.fromARGB(255, 253, 238, 215),
+              iconColor: Colors.orange,
+              onTap: () {
+                _createFolder(_currentFolder);
+              },
+            ),
           ],
         ),
         height15,
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Text("Recent Documents",style: w900_20Poppins(color: Colors.black),),
+            const Text(
+              'Recent Documents',
+              style: TextStyle(
+                fontSize: 18,
+                fontFamily: 'Poppins',
+                fontWeight: FontWeight.w800,
+                color: Colors.black,
+                letterSpacing: -0.2,
+              ),
+            ),
             InkWell(
               onTap: widget.onViewAll,
-              child: Text("View All ",style: w700_15Poppins(color: Colors.indigo),))
+              borderRadius: BorderRadius.circular(6),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Row(
+                  children: const [
+                    Text(
+                      'View all',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontFamily: 'Poppins',
+                        fontWeight: FontWeight.w600,
+                        color: Colors.indigo,
+                      ),
+                    ),
+                    SizedBox(width: 2),
+                    Icon(Icons.chevron_right, color: Colors.indigo, size: 18),
+                  ],
+                ),
+              ),
+            ),
           ],
         ),
         height10,
          RefreshIndicator(
            onRefresh: _refreshData,
            child: Container(
-          height: 210.h,
+          height: 170.h,
 decoration: BoxDecoration(
   borderRadius: BorderRadius.circular(12),
   color: Colors.white
 ),
              child: ListView(
+              physics: const NeverScrollableScrollPhysics(),
                padding: EdgeInsets.all((14)),
                children: [
                  if (activeQuery.isEmpty)
@@ -611,24 +696,48 @@ decoration: BoxDecoration(
       Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text("Shared with me",style: w900_20Poppins(color: Colors.black),),
+            const Text(
+              'Shared with me',
+              style: TextStyle(
+                fontSize: 18,
+                fontFamily: 'Poppins',
+                fontWeight: FontWeight.w800,
+                color: Colors.black,
+                letterSpacing: -0.2,
+              ),
+            ),
             InkWell(
-              onTap: (){
-                Navigator.push(context, MaterialPageRoute(builder: (context)=> SharedWithMeScreen()));
+              onTap: () {
+                Navigator.push(context, MaterialPageRoute(builder: (context) => SharedWithMeScreen()));
               },
-              child: Text("View All ",style: w700_15Poppins(color: Colors.indigo),))
+              borderRadius: BorderRadius.circular(6),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Row(
+                  children:  [
+                    Text(
+                      'View all',
+                      style:w500_14Poppins(color: Colors.indigo
+                      )
+                    ),
+                    SizedBox(width: 2),
+                    Icon(Icons.chevron_right, color: Colors.indigo, size: 18),
+                  ],
+                ),
+              ),
+            )
           ],
         ),
         height10,
         Container(
-          height: sharedDocuments.length ==1?70.h:sharedDocuments.length==2?140.h:sharedDocuments.length==3?210.h: sharedDocuments.length ==0?0:210.h,
+          height: sharedDocuments.length ==1?50.h:sharedDocuments.length==2?100.h:sharedDocuments.length==3?150.h: sharedDocuments.length ==0?0:150.h,
 decoration: BoxDecoration(
   borderRadius: BorderRadius.circular(12),
   color: Colors.white
 ),
           child: ListView.builder(
             shrinkWrap: true,
-            // physics: const NeverScrollableScrollPhysics(),
+            physics: const NeverScrollableScrollPhysics(),
             itemCount: sharedDocuments.length,
             itemBuilder: (context, index) {
               return _buildDocumentSharedCard(context, sharedDocuments[index], index);
@@ -816,128 +925,123 @@ decoration: BoxDecoration(
   }
 
 
-  Widget _buildDocumentSharedCard(BuildContext context, Document document, int index,) {
-    final r = context.r;
+  Widget _buildDocumentSharedCard(BuildContext context, Document document, int index) {
     final iconData = _getFileIcon(document.type);
     final color = _getFileColor(document.type);
-print("document upload date: ${document.name} - ${document.uploadDate}");
-    // Format the date to DD MM YYYY
-    String formattedDate = _formatDateDDMMYYYY(document.uploadDate);
-    String uniqueKey = document.id.isNotEmpty ? document.id : 'doc_$index';
-print("Documents count: ${sharedDocuments.length}");
+    final timeText = _getUpdatedText(document.updatedAt);
+
     return InkWell(
       onTap: () => _handleDocumentDoubleTap(document),
-      borderRadius: BorderRadius.circular(r.p(12)),
-      child: Card(
-        margin: EdgeInsets.symmetric(horizontal: r.p(8), vertical: r.p(8)),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(r.p(12))),
-        child: Padding(
-          padding: EdgeInsets.only(top: 10,left: 6),
-          child: Row(
-            // mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Top row with icon, document info, and expand/collapse button
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          padding: EdgeInsets.all(r.p(12)),
-                          decoration: BoxDecoration(
-                            color: color.withAlpha(20),
-                            borderRadius: BorderRadius.circular(r.p(8)),
-                          ),
-                          child: Icon(iconData, color: color, size: r.sp(32)),
-                        ),
-                       width10,
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                
-                                      children: [
-                                        Text(
-                                          document.name,
-                                          style: TextStyle(
-                                            color: Colors.black,
-                                            fontSize: r.sp(16),
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                  Row(children: [
-                                    Text("${document.sharedByName} shared ."),
-                                    width5,
-                                    Text(
-                    _getUpdatedText(document.updatedAt),
-                    style: w400_14Poppins(),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                                  ],),
-                                      ],
-                                    ),
-                                  ),
-                               
-                                ],
-                              ),
-                              
-                          
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                
-                   
-                  ],
-                ),
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // ── File icon badge ────────────────────────────────────────
+            Container(
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(10),
               ),
-          Builder(
-  builder: (_) {
-    final permission = document.permission;
-    if (permission == null || permission.isEmpty) {
-      return const SizedBox.shrink();
-    }
+              child: Icon(iconData, color: color, size: 24),
+            ),
+            const SizedBox(width: 12),
 
-    Color color;
-    switch (permission) {
-      case 'Can Edit':
-        color = Colors.blue;
-        break;
-      case 'Full Access':
-        color = Colors.green;
-        break;
-      case 'View Only':
-      default:
-        color = Colors.grey;
-        break;
-    }
+            // ── Name + sharer + time ───────────────────────────────────
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    document.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: w700_16Poppins()
+                  ),
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
+                      if ((document.sharedByName ?? '').isNotEmpty)
+                        Container(
+                          width: 16,
+                          height: 16,
+                          margin: const EdgeInsets.only(right: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.indigo.withOpacity(0.15),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Center(
+                            child: Text(
+                              (document.sharedByName ?? 'U')
+                                  .substring(0, 1)
+                                  .toUpperCase(),
+                              style: const TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.indigo,
+                              ),
+                            ),
+                          ),
+                        ),
+                      Expanded(
+                        child: Text(
+                          '${document.sharedByName ?? 'Someone'} shared · $timeText',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontFamily: 'Poppins',
+                            fontWeight: FontWeight.w400,
+                            color: Colors.grey.shade500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        permission,
-        style: w500_13Poppins(color: color),
-      ),
-    );
-  },
-),
-            ],
-          ),
+            // ── Permission pill ────────────────────────────────────────
+            Builder(builder: (_) {
+              final permission = document.permission;
+              if (permission == null || permission.isEmpty) {
+                return const SizedBox.shrink();
+              }
+              Color pillColor;
+              switch (permission) {
+                case 'Can Edit':
+                  pillColor = Colors.blue;
+                  break;
+                case 'Full Access':
+                  pillColor = Colors.green;
+                  break;
+                default:
+                  pillColor = Colors.grey.shade600;
+              }
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: pillColor.withOpacity(0.10),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: pillColor.withOpacity(0.25)),
+                ),
+                child: Text(
+                  permission,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontFamily: 'Poppins',
+                    fontWeight: FontWeight.w600,
+                    color: pillColor,
+                  ),
+                ),
+              );
+            }),
+          ],
         ),
       ),
     );
@@ -996,7 +1100,7 @@ Widget _buildSearchDocumentsSection({
           SizedBox(height: r.p(8)),
           Text(
             title,
-            style: TextStyle(fontWeight: FontWeight.w700, fontSize: r.sp(14)),
+            style: w900_15Poppins(color: Colors.black),
           ),
           SizedBox(height: r.p(10)),
           for (int i = 0; i < docs.length; i++)
@@ -1179,10 +1283,7 @@ String _documentDirectoryPath(Document document) {
                                 children: [
                                   Text(
                                     document.name,
-                                    style: TextStyle(
-                                      fontSize: r.sp(15),
-                                      fontWeight: FontWeight.bold,
-                                    ),
+                                    style:w700_14Poppins(color:Colors.black ),
                                     maxLines:  1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
@@ -1713,7 +1814,6 @@ Widget _buildDocumentsEmptyState() {
 
 
    Widget _buildDocumentsSection(List<Document> documents) {
-    final r = context.r;
     const docColors = {
       'PDF': Colors.red,
       'DOCX': Colors.blue,
@@ -1724,93 +1824,120 @@ Widget _buildDocumentsEmptyState() {
       'XLS': Colors.green,
       'DOC': Colors.blue,
     };
+
+    // Badge label abbreviation for the colored box (match design: PDF, W, X, etc.)
+    String _badgeLabel(String type) {
+      switch (type.toUpperCase()) {
+        case 'DOCX':
+        case 'DOC':
+          return 'W';
+        case 'XLSX':
+        case 'XLS':
+          return 'X';
+        case 'PPTX':
+        case 'PPT':
+          return 'P';
+        default:
+          return type.toUpperCase().length > 4
+              ? type.toUpperCase().substring(0, 4)
+              : type.toUpperCase();
+      }
+    }
+
     Widget content;
     if (_isLoading && documents.isEmpty) {
       content = _buildDocumentsLoadingState();
     } else if (documents.isEmpty) {
       content = _buildDocumentsEmptyState();
-    } else{
-          content = Column(
-            children: [
-            for (int i = 0; i < (documents.length > 3 ? 3 : documents.length); i++)
-  InkWell(
-    borderRadius: BorderRadius.circular(14),
-    onTap: () => DocumentOpenerService().openPreviewDialog(
-      context: context,
-      document: documents[i],
-    ),
-    child: Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-     
-       
-      ),
-      child: Row(
+    } else {
+      final shown = documents.length > 3 ? 3 : documents.length;
+      content = Column(
         children: [
-          /// File Type
-          Builder(
-            builder: (_) {
-              final fileType = documents[i].type.toUpperCase();
-              final color = docColors[fileType] ?? Colors.indigo;
+          for (int i = 0; i < shown; i++)
+            InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => DocumentOpenerService().openPreviewDialog(
+                context: context,
+                document: documents[i],
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    // ── Colored letter badge ───────────────────
+                    Builder(builder: (_) {
+                      final fileType = documents[i].type.toUpperCase();
+                      final color = (docColors[fileType] ?? Colors.indigo) as Color;
+                      return Container(
+                        height: 46,
+                        width: 46,
+                        decoration: BoxDecoration(
+                          color: color.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          _badgeLabel(documents[i].type),
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontFamily: 'Poppins',
+                            fontWeight: FontWeight.w700,
+                            color: color,
+                          ),
+                        ),
+                      );
+                    }),
 
-              return Container(
-                height: 52,
-                width: 52,
-                decoration: BoxDecoration(
-                  color: color.withOpacity(.12),
-                  borderRadius: BorderRadius.circular(12),
+                    const SizedBox(width: 12),
+
+                    // ── Name + subtitle ────────────────────────
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            documents[i].name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style:w700_16Poppins(color:Colors.black ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            _documentSubtitle(documents[i]),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: w400_13Poppins(color: Colors.grey.shade500),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(width: 8),
+
+                    // ── Time + more button ─────────────────────
+                  
+                  ],
                 ),
-                alignment: Alignment.center,
-                child: Text(
-                  documents[i].type,
-                  style: w700_14Poppins(color: color),
-                ),
-              );
-            },
-          ),
-
-          const SizedBox(width: 14),
-
-          /// File Name & Type
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  documents[i].name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: w700_17Poppins(),
-                ),
-
-                const SizedBox(height: 5),
-
-                Text(
-                  documents[i].type.toUpperCase(),
-                  style: w400_14Poppins(
-                    color: Colors.grey.shade600,
-                  ),
-                ),
-              ],
+              ),
             ),
-          ),
-
-          IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.more_horiz,color: Colors.grey,),
-          )
+            // if (i < shown - 1)
+            //   Divider(height: 1, color: Colors.grey.shade100),
         ],
-      ),
-    ),
-  ),
-            ],
-          );
-    }  
-  return content;
-      }
+      );
+    }
+    return content;
+  }
+
+  String _documentSubtitle(Document doc) {
+    final folder = doc.folder.trim();
+    final label = folder.isEmpty || folder.toLowerCase() == 'home' ? '' : folder;
+    final shared = doc.sharingType == 'Public' ? 'Shared' : '';
+    if (label.isNotEmpty && shared.isNotEmpty) return '$label · $shared';
+    if (label.isNotEmpty) return label;
+    if (shared.isNotEmpty) return shared;
+    return doc.type.toUpperCase();
+  }
     
 
     
@@ -1819,45 +1946,64 @@ Widget _buildDocumentsEmptyState() {
 
 
   Widget UploadDocument({
-      required String title,
+    required String title,
     required String subtitle,
     required IconData icon,
     required Color iconColor,
     required Color iconBackground,
     required VoidCallback onTap,
   }) {
-    return InkWell(
-      onTap: onTap,
-      child: Card(
-        elevation: 0.5,
-        
-        color: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        child: SizedBox(
-            width: 105.w,
-            height: 87.h,
-     
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical:  8.0,horizontal: 10),
-          child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-        Container(
-           decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
-          color:iconBackground
-        ),
-          child: Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Icon(icon,color: iconColor,size: 20,),
-          )),
-        height10,
-        Text(title,style: w900_15Poppins(),),
-        Text(subtitle,style: w600_14Poppins(color: Colors.grey.shade500),)
-          
-          ],),
-        ),
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: iconBackground,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, color: iconColor, size: 20),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontFamily: 'Poppins',
+                  fontWeight: FontWeight.w700,
+                  color: Colors.black,
+                ),
+              ),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontFamily: 'Poppins',
+                  fontWeight: FontWeight.w400,
+                  color: Colors.grey.shade500,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

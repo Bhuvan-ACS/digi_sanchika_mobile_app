@@ -1,3 +1,4 @@
+import 'package:digi_sanchika/utils/app_fonts.dart';
 import 'package:flutter/material.dart';
 import 'package:digi_sanchika/services/recycle_bin_service.dart';
 import 'package:digi_sanchika/models/recycle_bin_item.dart';
@@ -398,10 +399,7 @@ class _RecycleBinScreenState extends State<RecycleBinScreen> {
                   ),
                   Text(
                     'Items are permanently removed after 30 days',
-                    style: TextStyle(
-                      color: Colors.grey.shade500,
-                      fontSize: 12,
-                    ),
+                    style: w400_13Poppins(color: Colors.grey.shade600),
                   ),
                 ],
               )
@@ -424,11 +422,11 @@ class _RecycleBinScreenState extends State<RecycleBinScreen> {
               onPressed: _clearSelection,
             ),
           ] else ...[
-            ViewModePopupButton(
-              value: _currentViewMode,
-              iconColor: Colors.black87,
-              onSelected: (mode) => setState(() => _currentViewMode = mode),
-            ),
+            // ViewModePopupButton(
+            //   value: _currentViewMode,
+            //   iconColor: Colors.black87,
+            //   onSelected: (mode) => setState(() => _currentViewMode = mode),
+            // ),
             IconButton(
               onPressed: _load,
               icon: const Icon(Icons.refresh_rounded,color: Colors.black87),

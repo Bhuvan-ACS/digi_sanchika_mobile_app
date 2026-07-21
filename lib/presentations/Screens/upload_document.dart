@@ -41,6 +41,9 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
   final TextEditingController _keywordsController = TextEditingController();
   final TextEditingController _remarksController = TextEditingController();
 
+  // Upload type: null = none selected, 'single' | 'multiple' | 'folder'
+  String? _selectedUploadType;
+
   String _selectedFolder = '';
   String _selectedClassification = 'General';
   bool _allowDownload = true;
@@ -2678,9 +2681,10 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Upload Type Selection
+                  // ── Upload Type Selection ──────────────────────────────
                   Card(
                     elevation: 0.5,
+                    color: Colors.white,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(r.p(12)),
                     ),
@@ -2697,142 +2701,44 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
                             ),
                           ),
                           SizedBox(height: r.p(12)),
-                          LayoutBuilder(
-                            builder: (context, constraints) {
-                              if (constraints.maxWidth < 600) {
-                                return Column(
-                                  children: [
-                                    SizedBox(
-                                      width: double.infinity,
-                                      child: OutlinedButton.icon(
-                                        onPressed: _isLoading
-                                            ? null
-                                            : _pickSingleFile,
-                                        icon: const Icon(
-                                          Icons.insert_drive_file_outlined,
-                                        ),
-                                        label: const Text('Single File'),
-                                        style: OutlinedButton.styleFrom(
-                                          padding: EdgeInsets.symmetric(
-                                            vertical: r.p(12),
-                                          ),
-                                          side:  BorderSide(
-                                            color: Colors.grey.shade400,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    SizedBox(height: r.p(12)),
-                                    SizedBox(
-                                      width: double.infinity,
-                                      child: OutlinedButton.icon(
-                                        onPressed: _isLoading
-                                            ? null
-                                            : _pickMultipleFiles,
-                                        icon: const Icon(Icons.folder_copy_outlined),
-                                        label: const Text('Multiple Files'),
-                                        style: OutlinedButton.styleFrom(
-                                          padding: EdgeInsets.symmetric(
-                                            vertical: r.p(12),
-                                          ),
-                                          side:  BorderSide(
-                                            color: Colors.grey.shade400,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    SizedBox(height: r.p(12)),
-                                    SizedBox(
-                                      width: double.infinity,
-                                      child: OutlinedButton.icon(
-                                        onPressed: _isLoading
-                                            ? null
-                                            : _pickFolder,
-                                        icon: const Icon(Icons.folder_outlined),
-                                        label: const Text('Entire Folder'),
-                                        style: OutlinedButton.styleFrom(
-                                          padding: EdgeInsets.symmetric(
-                                            vertical: r.p(12),
-                                          ),
-                                          side:  BorderSide(
-                                            color: Colors.grey.shade400,
-                                          ),
-                                          foregroundColor: Colors.indigo,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                );
-                              } else {
-                                return Row(
-                                  children: [
-                                    Expanded(
-                                      child: OutlinedButton.icon(
-                                        onPressed: _isLoading
-                                            ? null
-                                            : _pickSingleFile,
-                                        icon: const Icon(
-                                          Icons.insert_drive_file,
-                                        ),
-                                        label: const Text('Single File'),
-                                        style: OutlinedButton.styleFrom(
-                                          padding: EdgeInsets.symmetric(
-                                            vertical: r.p(12),
-                                          ),
-                                          side: const BorderSide(
-                                            color: Colors.indigo,
-                                          ),
-                                          foregroundColor: Colors.indigo,
-                                        ),
-                                      ),
-                                    ),
-                                    SizedBox(width: r.p(12)),
-                                    Expanded(
-                                      child: OutlinedButton.icon(
-                                        onPressed: _isLoading
-                                            ? null
-                                            : _pickMultipleFiles,
-                                        icon: const Icon(Icons.folder_copy),
-                                        label: const Text('Multiple Files'),
-                                        style: OutlinedButton.styleFrom(
-                                          padding: EdgeInsets.symmetric(
-                                            vertical: r.p(12),
-                                          ),
-                                          side: const BorderSide(
-                                            color: Colors.indigo,
-                                          ),
-                                          foregroundColor: Colors.indigo,
-                                        ),
-                                      ),
-                                    ),
-                                    SizedBox(width: r.p(12)),
-                                    Expanded(
-                                      child: OutlinedButton.icon(
-                                        onPressed: _isLoading
-                                            ? null
-                                            : _pickFolder,
-                                        icon: const Icon(Icons.folder),
-                                        label: const Text('Entire Folder'),
-                                        style: OutlinedButton.styleFrom(
-                                          padding: EdgeInsets.symmetric(
-                                            vertical: r.p(12),
-                                          ),
-                                          side: const BorderSide(
-                                            color: Colors.indigo,
-                                          ),
-                                          foregroundColor: Colors.indigo,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                );
-                              }
-                            },
+                          Row(
+                            children: [
+                              _buildUploadTypeOption(
+                                r: r,
+                                type: 'single',
+                                icon: Icons.insert_drive_file_outlined,
+                                label: 'Single',
+                              ),
+                              SizedBox(width: r.p(10)),
+                              _buildUploadTypeOption(
+                                r: r,
+                                type: 'multiple',
+                                icon: Icons.copy_outlined,
+                                label: 'Multiple',
+                              ),
+                              SizedBox(width: r.p(10)),
+                              _buildUploadTypeOption(
+                                r: r,
+                                type: 'folder',
+                                icon: Icons.folder_outlined,
+                                label: 'Folder',
+                              ),
+                            ],
                           ),
                         ],
                       ),
                     ),
                   ),
+
+                  // ── "Tap to browse" tile – shown only after type is chosen ──
+                  if (_selectedUploadType != null) ...[
+                    SizedBox(height: r.p(16)),
+                    GestureDetector(
+                      onTap: _isLoading ? null : _triggerFilePicker,
+                      child: DottedBrowseTile(r: r, isLoading: _isLoading),
+                    ),
+                  ],
+
             height10,
                   if (_uploadedFiles.isNotEmpty) ...[
                     SizedBox(height: r.p(24)),
@@ -3299,6 +3205,144 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
           ),
         ),
       ),
+    );
+  }
+
+  // ── Upload-type option chip ────────────────────────────────────────────────
+  Widget _buildUploadTypeOption({
+    required ResponsiveHelper r,
+    required String type,
+    required IconData icon,
+    required String label,
+  }) {
+    final isSelected = _selectedUploadType == type;
+    return Expanded(
+      child: GestureDetector(
+        onTap: _isLoading
+            ? null
+            : () {
+                setState(() {
+                  _selectedUploadType = type;
+                  // Clear previously picked files when type changes
+                  _uploadedFiles.clear();
+                });
+              },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: EdgeInsets.symmetric(vertical: r.p(14)),
+          decoration: BoxDecoration(
+            color: isSelected ? Colors.indigo.shade50 : Colors.white,
+            borderRadius: BorderRadius.circular(r.p(10)),
+            border: Border.all(
+              color: isSelected ? Colors.indigo : Colors.grey.shade300,
+              width: isSelected ? 2 : 1,
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: r.sp(24),
+                color: isSelected ? Colors.indigo : Colors.grey.shade500,
+              ),
+              SizedBox(height: r.p(6)),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: r.sp(12),
+                  fontWeight:
+                      isSelected ? FontWeight.w600 : FontWeight.normal,
+                  color: isSelected ? Colors.indigo : Colors.grey.shade600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Dispatch to the right picker ──────────────────────────────────────────
+  Future<void> _triggerFilePicker() async {
+    switch (_selectedUploadType) {
+      case 'single':
+        await _pickSingleFile();
+        break;
+      case 'multiple':
+        await _pickMultipleFiles();
+        break;
+      case 'folder':
+        await _pickFolder();
+        break;
+    }
+  }
+}
+
+// ── Dotted browse tile widget ─────────────────────────────────────────────────
+class DottedBrowseTile extends StatelessWidget {
+  final ResponsiveHelper r;
+  final bool isLoading;
+
+  const DottedBrowseTile({super.key, required this.r, required this.isLoading});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.symmetric(vertical: r.p(28)),
+      decoration: BoxDecoration(
+        color: Colors.indigo.shade50.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(r.p(12)),
+        border: Border.all(
+          color: Colors.indigo.shade200,
+          width: 1.5,
+          // Dashed effect via custom painter below
+        ),
+      ),
+      child: isLoading
+          ? Center(
+              child: SizedBox(
+                width: r.p(24),
+                height: r.p(24),
+                child: const CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: r.p(48),
+                  height: r.p(48),
+                  decoration: BoxDecoration(
+                    color: Colors.indigo.shade100,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.upload_outlined,
+                    size: r.sp(26),
+                    color: Colors.indigo,
+                  ),
+                ),
+                SizedBox(height: r.p(12)),
+                Text(
+                  'Tap to browse files',
+                  style: TextStyle(
+                    fontSize: r.sp(15),
+                    fontWeight: FontWeight.w600,
+                    color: Colors.indigo.shade700,
+                  ),
+                ),
+                SizedBox(height: r.p(4)),
+                Text(
+                  'PDF, DOCX, XLSX, PPTX up to 50 MB',
+                  style: TextStyle(
+                    fontSize: r.sp(12),
+                    color: Colors.grey.shade500,
+                  ),
+                ),
+              ],
+            ),
     );
   }
 }

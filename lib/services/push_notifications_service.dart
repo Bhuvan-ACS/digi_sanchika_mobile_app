@@ -43,7 +43,7 @@ class PushNotificationsService {
     const init = InitializationSettings(android: androidInit, iOS: iosInit);
 
     try {
-      await plugin.initialize(settings: init);
+      await plugin.initialize(init);
     } catch (_) {}
 
     if (Platform.isAndroid) {
@@ -62,8 +62,9 @@ class PushNotificationsService {
     }
 
     final data = message.data;
-    final title = (data['title'] ?? message.notification?.title ?? 'Notification')
-        .toString();
+    final title =
+        (data['title'] ?? message.notification?.title ?? 'Notification')
+            .toString();
     final body =
         (data['message'] ?? data['body'] ?? message.notification?.body ?? '')
             .toString();
@@ -77,14 +78,15 @@ class PushNotificationsService {
       priority: Priority.high,
     );
     const iosDetails = DarwinNotificationDetails();
-    const details = NotificationDetails(android: androidDetails, iOS: iosDetails);
+    const details =
+        NotificationDetails(android: androidDetails, iOS: iosDetails);
 
     try {
       await plugin.show(
-        id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-        title: title,
-        body: body,
-        notificationDetails: details,
+        DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        title,
+        body,
+        details,
         payload: payload,
       );
     } catch (_) {}
@@ -136,10 +138,10 @@ class PushNotificationsService {
       _debugSmokeShown = true;
       try {
         await _local.show(
-          id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-          title: 'Push ready',
-          body: 'FCM + local notifications initialized',
-          notificationDetails: const NotificationDetails(
+          DateTime.now().millisecondsSinceEpoch ~/ 1000,
+          'Push ready',
+          'FCM + local notifications initialized',
+          const NotificationDetails(
             android: AndroidNotificationDetails(
               'push_default',
               'Push Notifications',
@@ -159,6 +161,7 @@ class PushNotificationsService {
         );
       } catch (_) {}
     }
+
     _tokenRefreshSub = _messaging.onTokenRefresh.listen((token) async {
       _currentToken = token;
       await PushTokenService.registerToken(token: token);
@@ -168,7 +171,8 @@ class PushNotificationsService {
       await _showForegroundNotification(message);
     });
 
-    _onOpenSub = FirebaseMessaging.onMessageOpenedApp.listen((message) async {
+    _onOpenSub =
+        FirebaseMessaging.onMessageOpenedApp.listen((message) async {
       await _handleOpen(message);
     });
 
@@ -252,7 +256,7 @@ class PushNotificationsService {
     );
     const init = InitializationSettings(android: androidInit, iOS: iosInit);
     await _local.initialize(
-      settings: init,
+      init,
       onDidReceiveNotificationResponse: (resp) async {
         final raw = resp.payload;
         if (raw == null || raw.isEmpty) return;
@@ -274,7 +278,8 @@ class PushNotificationsService {
       if (didLaunch) {
         final response = launchDetails?.notificationResponse;
         final raw =
-            response?.payload ?? (launchDetails as dynamic).payload as String?;
+            response?.payload ??
+            (launchDetails as dynamic).payload as String?;
         if (raw != null && raw.isNotEmpty) {
           scheduleMicrotask(() async {
             try {
@@ -303,15 +308,14 @@ class PushNotificationsService {
   }
 
   Future<void> _showForegroundNotification(RemoteMessage message) async {
-    // If user isn't logged in, ignore (prevents showing push on login screen in some edge cases).
+    // If user isn't logged in, ignore (prevents showing push on login screen).
     final token = await TokenStorage.getAccessToken();
     if (token == null || token.isEmpty) return;
 
     final title = message.notification?.title ??
         message.data['title']?.toString() ??
         'Notification';
-    final body =
-        message.notification?.body ??
+    final body = message.notification?.body ??
         message.data['message']?.toString() ??
         message.data['body']?.toString() ??
         '';
@@ -325,14 +329,15 @@ class PushNotificationsService {
       importance: Importance.high,
       priority: Priority.high,
     );
-
     const iosDetails = DarwinNotificationDetails();
-    const details = NotificationDetails(android: androidDetails, iOS: iosDetails);
+    const details =
+        NotificationDetails(android: androidDetails, iOS: iosDetails);
+
     await _local.show(
-      id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-      title: title,
-      body: body,
-      notificationDetails: details,
+      DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      title,
+      body,
+      details,
       payload: payload,
     );
   }
@@ -353,7 +358,10 @@ class PushNotificationsService {
     final target = (data['target'] ?? '').toString().toLowerCase().trim();
     final category = (data['category'] ?? '').toString().toLowerCase().trim();
     final entityType =
-        (data['entityType'] ?? data['entity_type'] ?? '').toString().toLowerCase().trim();
+        (data['entityType'] ?? data['entity_type'] ?? '')
+            .toString()
+            .toLowerCase()
+            .trim();
     final url = (data['url'] ?? '').toString().trim();
 
     final entityId =
@@ -378,7 +386,6 @@ class PushNotificationsService {
       }
     }
 
-    // Default: open notifications list.
     Future<void> openNotifications() async {
       nav.push(
         MaterialPageRoute(builder: (_) => const NotificationsScreen()),
@@ -394,7 +401,8 @@ class PushNotificationsService {
 
         case 'download_request':
           nav.push(
-            MaterialPageRoute(builder: (_) => const DownloadRequestsScreen()),
+            MaterialPageRoute(
+                builder: (_) => const DownloadRequestsScreen()),
           );
           break;
 
@@ -410,8 +418,9 @@ class PushNotificationsService {
             break;
           }
           final res = await FolderService.getFolderContents(entityId);
-          final folderName =
-              res['folderName']?.toString() ?? res['folder_name']?.toString() ?? 'Folder';
+          final folderName = res['folderName']?.toString() ??
+              res['folder_name']?.toString() ??
+              'Folder';
           nav.push(
             MaterialPageRoute(
               builder: (_) => FolderScreen(
@@ -427,7 +436,8 @@ class PushNotificationsService {
             await openNotifications();
             break;
           }
-          final details = await MyDocumentsService.getDocumentDetails(entityId);
+          final details =
+              await MyDocumentsService.getDocumentDetails(entityId);
           final raw = details['details'];
           Map<String, dynamic> m = {};
           if (raw is Map<String, dynamic>) {
@@ -436,21 +446,38 @@ class PushNotificationsService {
 
           final doc = Document(
             id: entityId,
-            name: (m['name'] ?? m['file_name'] ?? m['original_filename'] ?? 'Document').toString(),
+            name: (m['name'] ??
+                    m['file_name'] ??
+                    m['original_filename'] ??
+                    'Document')
+                .toString(),
             type: (m['type'] ?? m['mime_type'] ?? '').toString(),
-            size: (m['size'] ?? m['file_size'] ?? m['file_size_bytes'] ?? '').toString(),
+            size: (m['size'] ??
+                    m['file_size'] ??
+                    m['file_size_bytes'] ??
+                    '')
+                .toString(),
             keyword: (m['keywords'] ?? m['keyword'] ?? '').toString(),
-            uploadDate: (m['created_at'] ?? m['upload_date'] ?? '').toString(),
-            owner: (m['owner']?['name'] ?? m['owner'] ?? 'Unknown').toString(),
+            uploadDate:
+                (m['created_at'] ?? m['upload_date'] ?? '').toString(),
+            owner: (m['owner']?['name'] ?? m['owner'] ?? 'Unknown')
+                .toString(),
             details: (m['details'] ?? '').toString(),
-            classification: (m['classification'] ?? 'General').toString(),
+            classification:
+                (m['classification'] ?? 'General').toString(),
             allowDownload: m['allowDownload'] != false,
-            isPublishedToLibrary: m['isPublishedToLibrary'] == true || m['is_published_to_library'] == true,
-            sharingType: (m['sharingType'] ?? m['sharing_type'] ?? 'private').toString(),
-            folder: (m['folder'] ?? m['folder_name'] ?? 'General').toString(),
-            folderId: (m['folderId'] ?? m['folder_id'])?.toString(),
+            isPublishedToLibrary: m['isPublishedToLibrary'] == true ||
+                m['is_published_to_library'] == true,
+            sharingType:
+                (m['sharingType'] ?? m['sharing_type'] ?? 'private')
+                    .toString(),
+            folder:
+                (m['folder'] ?? m['folder_name'] ?? 'General').toString(),
+            folderId:
+                (m['folderId'] ?? m['folder_id'])?.toString(),
             path: (m['path'] ?? m['filename'] ?? '').toString(),
-            fileType: (m['fileType'] ?? m['file_type'] ?? '').toString(),
+            fileType:
+                (m['fileType'] ?? m['file_type'] ?? '').toString(),
           );
 
           final fileType = doc.fileType.isNotEmpty

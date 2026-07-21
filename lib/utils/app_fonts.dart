@@ -486,9 +486,45 @@ TextStyle w700_44Poppins({Color? color = Colors.black}) {
   );
 }
 
+TextStyle w800_15Poppins({Color? color = Colors.black}) {
+  return TextStyle(
+    fontSize: 15,
+    fontWeight: FontWeight.w800,
+    color: color,
+    fontFamily: poppins,
+  );
+}
+
 TextStyle w900_15Poppins({Color? color = Colors.black}) {
   return TextStyle(
     fontSize: 15,
+    fontWeight: FontWeight.w900,
+    color: color,
+    fontFamily: poppins,
+  );
+}
+
+TextStyle w900_16Poppins({Color? color = Colors.black}) {
+  return TextStyle(
+    fontSize: 16,
+    fontWeight: FontWeight.w900,
+    color: color,
+    fontFamily: poppins,
+  );
+}
+
+TextStyle w900_17Poppins({Color? color = Colors.black}) {
+  return TextStyle(
+    fontSize: 17,
+    fontWeight: FontWeight.w900,
+    color: color,
+    fontFamily: poppins,
+  );
+}
+
+TextStyle w900_18Poppins({Color? color = Colors.black}) {
+  return TextStyle(
+    fontSize: 18,
     fontWeight: FontWeight.w900,
     color: color,
     fontFamily: poppins,
