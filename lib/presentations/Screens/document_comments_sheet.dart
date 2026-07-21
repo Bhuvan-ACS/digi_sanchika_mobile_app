@@ -10,7 +10,7 @@ class DocumentCommentsSheet {
   }) {
     return showModalBottomSheet(
       context: context,
-      isScrollControlled: true,
+      isScrollControlled: true, 
       backgroundColor: Colors.transparent,
       builder: (_) => _DocumentCommentsSheetWidget(
         documentId: documentId,
