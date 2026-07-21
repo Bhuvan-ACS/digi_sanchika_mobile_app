@@ -4,14 +4,16 @@ import 'package:device_preview/device_preview.dart';
 import 'package:digi_sanchika/presentations/Screens/home_page.dart';
 import 'package:digi_sanchika/presentations/Screens/login_page.dart';
 import 'package:digi_sanchika/presentations/Screens/push_debug_screen.dart';
+import 'package:digi_sanchika/screens/onboarding_screen.dart';
+import 'package:digi_sanchika/screens/splash_screen.dart';
 import 'package:digi_sanchika/services/api_service.dart';
 import 'package:digi_sanchika/services/push_notifications_service.dart';
-import 'package:digi_sanchika/services/token_storage.dart';
 import 'package:digi_sanchika/utils/app_theme.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
@@ -19,33 +21,33 @@ final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  try {
-    await Firebase.initializeApp();
-  } catch (_) {}
-
-  // Backend sends data-only pushes; display a local notification ourselves.
+  try { await Firebase.initializeApp(); } catch (_) {}
   await PushNotificationsService.showBackgroundNotification(message);
 }
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Show UI immediately; do slow startup work in the background so we don't
-  // display a black screen while waiting on network/Firebase initialization.
+  // Force status bar to light icons immediately so the splash looks correct
+  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: Brightness.light,
+    statusBarBrightness: Brightness.dark,
+  ));
+
   PushNotificationsService.instance.attachNavigator(rootNavigatorKey);
+
+  // Show the app (SplashScreen) immediately; init services in background.
   runApp(const DigiSanchikaApp());
 
   unawaited(_initServices());
 }
 
 Future<void> _initServices() async {
-  try {
-    await dotenv.load(fileName: '.env');
-  } catch (_) {}
+  try { await dotenv.load(fileName: '.env'); } catch (_) {}
 
   final firebaseOk = await _tryInitFirebase();
   if (firebaseOk) {
-    // Only register background handler when Firebase is actually configured.
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
   }
 
@@ -54,24 +56,13 @@ Future<void> _initServices() async {
       baseUrl: dotenv.env['BASE_URL'] ?? dotenv.env['API_BASE_URL'],
     );
   } catch (e) {
-    if (kDebugMode) {
-      print('ApiService init failed: $e');
-    }
+    if (kDebugMode) print('ApiService init failed: $e');
   }
 
   if (kDebugMode) {
     print('Using backend: ${ApiService.currentBaseUrl}');
     print('Connected: ${ApiService.isConnected}');
   }
-
-  // If a session exists, initialize push after the API client is ready so
-  // token registration can reach the backend.
-  try {
-    final accessToken = await TokenStorage.getAccessToken();
-    if (accessToken != null && accessToken.trim().isNotEmpty) {
-      await PushNotificationsService.instance.initAfterLogin();
-    }
-  } catch (_) {}
 }
 
 Future<bool> _tryInitFirebase() async {
@@ -79,13 +70,12 @@ Future<bool> _tryInitFirebase() async {
     await Firebase.initializeApp();
     return true;
   } catch (e) {
-    if (kDebugMode) {
-      print('Firebase init skipped/failed (missing config?): $e');
-    }
+    if (kDebugMode) print('Firebase init skipped/failed: $e');
     return false;
   }
 }
 
+// ─── App root ─────────────────────────────────────────────────────────────────
 class DigiSanchikaApp extends StatelessWidget {
   const DigiSanchikaApp({super.key});
 
@@ -95,84 +85,43 @@ class DigiSanchikaApp extends StatelessWidget {
       designSize: const Size(360, 690),
       minTextAdapt: true,
       splitScreenMode: true,
-
-      // Use builder only if you need to use library outside ScreenUtilInit context
-      builder: (_, child) {
+      // ⚠️ Use child pattern so SplashScreen is NOT rebuilt on ScreenUtil init
+      child: const _AppShell(),
+      builder: (context, child) {
         return DevicePreview(
-              enabled: false,
-              tools: const [...DevicePreview.defaultTools],  builder: (context) {
-            return MaterialApp(
-              title: 'Digi Sanchika',
-              useInheritedMediaQuery: true,
-              debugShowCheckedModeBanner: false,
-              theme: buildAppTheme(),
-              navigatorKey: rootNavigatorKey,
-              home: const _AuthGate(),
-              routes: {
-                '/login': (context) => const LoginPage(),
-                '/home': (context) => const HomePage(),
-                '/push-debug': (context) => const PushDebugScreen(),
-              },
-            );
-          }
+          enabled: false,
+          tools: const [...DevicePreview.defaultTools],
+          builder: (_) => MaterialApp(
+            title: 'Digi Sanchika',
+            useInheritedMediaQuery: true,
+            debugShowCheckedModeBanner: false,
+            theme: buildAppTheme(),
+            navigatorKey: rootNavigatorKey,
+            // ✅ SplashScreen is the one and only entry point
+            home: child,
+            routes: {
+              '/splash':     (_) => const SplashScreen(),
+              '/onboarding': (_) => const OnboardingScreen(),
+              '/login':      (_) => const LoginPage(),
+              '/home':       (_) => const HomePage(),
+              '/push-debug': (_) => const PushDebugScreen(),
+            },
+          ),
         );
-      }
-    );
-  }
-}
-
-class _AuthGate extends StatefulWidget {
-  const _AuthGate();
-
-  @override
-  State<_AuthGate> createState() => _AuthGateState();
-}
-
-class _AuthGateState extends State<_AuthGate> {
-  late final Future<bool> _future;
-
-  @override
-  void initState() {
-    super.initState();
-    _future = _hasSession();
-  }
-
-  Future<bool> _hasSession() async {
-    final token = await TokenStorage.getAccessToken();
-    if (token == null || token.trim().isEmpty) return false;
-
-    // Token exists, but may be expired/revoked. Validate once before routing
-    // to Home to avoid landing on an unauthenticated app state.
-    try {
-      await ApiService.initialize();
-      final r = await ApiService.testAuthConnection();
-      if (r['authenticated'] == true) return true;
-    } catch (_) {}
-
-    try {
-      await ApiService.clearTokens();
-    } catch (_) {}
-    return false;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FutureBuilder<bool>(
-      future: _future,
-      builder: (context, snapshot) {
-        final hasSession = snapshot.data == true;
-        if (!snapshot.hasData) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
-        }
-        return hasSession ? const HomePage() : const LoginPage();
       },
     );
   }
 }
 
-// Keep old class name as alias so nothing breaks
-typedef MyApp = DigiSanchikaApp;
+/// Thin wrapper so the splash widget reference is stable and created once.
+class _AppShell extends StatelessWidget {
+  const _AppShell();
 
+  @override
+  Widget build(BuildContext context) => const SplashScreen();
+}
+
+// ─── AppLogo helper (unchanged) ───────────────────────────────────────────────
 class AppLogo extends StatelessWidget {
   final double size;
   final Color? color;
@@ -193,16 +142,14 @@ class AppLogo extends StatelessWidget {
       height: size,
       fit: fit,
       color: color,
-      errorBuilder: (context, error, stackTrace) {
-        if (kDebugMode) {
-          print('Error loading app logo: $error');
-        }
-        return Icon(
-          Icons.library_books_rounded,
-          size: size,
-          color: color ?? AppColors.primary,
-        );
-      },
+      errorBuilder: (_, __, ___) => Icon(
+        Icons.library_books_rounded,
+        size: size,
+        color: color ?? AppColors.primary,
+      ),
     );
   }
 }
+
+// Keep old alias so nothing breaks
+typedef MyApp = DigiSanchikaApp;

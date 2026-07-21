@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:digi_sanchika/models/shared_by_me_model.dart';
 import 'package:dio/dio.dart';
 import 'package:digi_sanchika/models/folder_members.dart';
 import 'package:digi_sanchika/models/group_member.dart';
@@ -50,10 +51,10 @@ class SharingService {
     return SharedWithMeResult.fromJson(map);
   }
 
-  Future<SharedWithMeResult> sharedByMe() async {
+  Future<SharedByMeModel> sharedByMe() async {
     final response = await _dio.get('$_sharesBasePath/shared-by-me');
     final map = _asMap(response.data) ?? const <String, dynamic>{};
-    return SharedWithMeResult.fromJson(map);
+    return SharedByMeModel.fromJson(map);
   }
 
   Future<ShareGrantResult> listItemShares({

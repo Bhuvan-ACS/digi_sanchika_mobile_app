@@ -1898,26 +1898,23 @@ class _SharedFolderScreenState extends State<SharedFolderScreen> {
 
     return DismissKeyboard(child: Scaffold(
       appBar: AppBar(
-   
+   backgroundColor: Colors.grey.shade100,
+   iconTheme: IconThemeData(color: Colors.black),
         title: Column(
+          
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               widget.folderName,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
+              style:w600_16Poppins(),
             ),
             if (widget.userName != null)
               Text(
                 'Shared by: ${widget.userName}',
-                style: const TextStyle(fontSize: 12, color: Colors.white70),
+                style: w400_12Poppins(),
               ),
           ],
         ),
-        backgroundColor: Colors.indigo.shade700,
         elevation: 0,
         actions: [
           IconButton(

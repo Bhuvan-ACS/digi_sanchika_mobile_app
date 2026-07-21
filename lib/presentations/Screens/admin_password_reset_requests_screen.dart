@@ -1,5 +1,6 @@
 import 'package:digi_sanchika/models/password_reset_request.dart';
 import 'package:digi_sanchika/services/admin_password_reset_service.dart';
+import 'package:digi_sanchika/utils/app_fonts.dart';
 import 'package:digi_sanchika/utils/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:digi_sanchika/widgets/responsive_page.dart';
@@ -342,22 +343,27 @@ class _AdminPasswordResetRequestsScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Password Reset Requests'),
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
+        iconTheme: IconThemeData(color: Colors.black),
+        title:  Text('Password Reset Requests',style: w700_16Poppins(color: Colors.black),),
+        backgroundColor: Colors.white,
         actions: [
           IconButton(
             tooltip: 'Refresh',
             onPressed: _load,
-            icon: const Icon(Icons.refresh_rounded),
+            icon: const Icon(Icons.refresh_rounded,color: Colors.black,),
           ),
         ],
         bottom: TabBar(
+
+          indicatorColor:  Color(0xFF4F63FF),
+          labelStyle:  w400_16Poppins(color:  Color(0xFF4F63FF)),
+          unselectedLabelStyle:w400_16Poppins(color: Colors.black45) ,
           controller: _tabs,
-          tabs: const [
-            Tab(text: 'Pending'),
-            Tab(text: 'Resolved'),
-            Tab(text: 'Rejected'),
+          tabs: [
+            
+            Tab(child:Text('Pending',style: w400_16Poppins(),)),
+            Tab(child: Text('Resolved',style: w400_16Poppins(),)),
+            Tab(child: Text('Rejected',style: w400_16Poppins(),)),
           ],
         ),
       ),

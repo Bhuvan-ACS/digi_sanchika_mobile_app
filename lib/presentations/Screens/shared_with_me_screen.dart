@@ -1,3 +1,4 @@
+import 'package:digi_sanchika/presentations/Screens/shared_by_me_screen.dart';
 import 'package:digi_sanchika/presentations/Screens/shared_folder_folder_screen.dart';
 import 'package:digi_sanchika/presentations/Screens/shared_files_screen.dart';
 import 'package:digi_sanchika/utils/app_fonts.dart';
@@ -34,7 +35,7 @@ class _SharedWithMeScreenState extends State<SharedWithMeScreen> with SingleTick
       appBar: AppBar(
         centerTitle: true,
         iconTheme: const IconThemeData(color: Colors.indigo),
-        title: const Text('Shared with Me',style: TextStyle(color: Colors.indigo,
+        title: const Text('Shared',style: TextStyle(color: Colors.indigo,
             fontWeight: FontWeight.w600,
         ),
         
@@ -55,7 +56,7 @@ indicatorColor: Colors.indigo,
                 children: [
                   Icon(Icons.file_copy_outlined, size: 16),
                   SizedBox(width: 6),
-                  Text("Files"),
+                  Text("Shared with me"),
                 ],
               ),
             ),
@@ -65,7 +66,7 @@ indicatorColor: Colors.indigo,
                 children: [
                   Icon(Icons.folder_open, size: 16),
                   SizedBox(width: 6),
-                  Text("Folders"),
+                  Text("Shared by me"),
                 ],
               ),
             ),
@@ -81,12 +82,12 @@ indicatorColor: Colors.indigo,
           physics: const NeverScrollableScrollPhysics(),
           children: [
        SharedMeScreen(),
-            SharedFolderFolderScreen(),
+            SharedByMeScreen(),
           ],
         ),
       ),
         ],
       ),
     );
-  }
+  } 
 }

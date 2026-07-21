@@ -1,7 +1,7 @@
-
 import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
+import 'package:digi_sanchika/presentations/Screens/shared_folder_screen.dart';
 import 'package:digi_sanchika/utils/app_fonts.dart';
 import 'package:flutter/material.dart';
 import 'package:digi_sanchika/utils/responsive_helper.dart';
@@ -40,25 +40,24 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
   final DocumentOpenerService _documentOpener = DocumentOpenerService();
 
   // Controllers
-  final TextEditingController _searchController = TextEditingController();    
+  final TextEditingController _searchController = TextEditingController();
 
   // State variables
   List<Document> _sharedDocuments = [];
   List<Document> _filteredDocuments = [];
   List<SharedFolder> _sharedFolders = [];
+  List<SharedFolder> _filteredFolders = [];
   bool _isLoading = true;
   bool _hasError = false;
   bool _isDownloading = false;
   String _errorMessage = '';
 
-  // NEW: Layout mode and file type filter variables
+  // Layout mode and file type filter variables
   AppViewMode _currentViewMode = AppViewMode.list;
   String _selectedFileType = 'All';
-  List<String> availableFileTypes = [
-    'All',
-  ]; // Will be populated from documents
+  List<String> availableFileTypes = ['All'];
 
-  // NEW: Collapsible states for document cards
+  // Collapsible states for document cards
   final Map<String, bool> _expandedStates = {};
 
   void _clearExpandedStates() {
@@ -110,6 +109,7 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
                   : f,
             )
             .toList();
+        _filteredFolders = List.from(_sharedFolders);
       });
     } catch (_) {
       // Non-fatal: counts are best-effort.
@@ -120,8 +120,8 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
   void initState() {
     super.initState();
     _loadSharedData();
- print("shared data $_filteredDocuments");
- _sharedFoldersService.fetchSharedFolders().then((folders) {
+    print("shared data $_filteredDocuments");
+    _sharedFoldersService.fetchSharedFolders().then((folders) {
       print('Fetched ${folders.length} shared folders:');
       for (final folder in folders) {
         print(
@@ -167,19 +167,15 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
 
       // Check internet connection
       if (!_sharedService.isConnected) {
-        // Load from local storage
         _loadFromLocalStorage();
         return;
       }
 
-      // Try to load from backend first
+      // Load from backend
       final response = await _sharedService.fetchSharedDocuments();
-
-      // Extract documents and folders from the response
       final List<Document> documents = response.documents;
       final List<SharedFolder> folders = response.folders;
 
-    
       if (!mounted) return;
 
       // Extract unique file types from documents
@@ -193,38 +189,33 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
         _sharedDocuments = documents;
         _filteredDocuments = documents;
         _sharedFolders = folders;
+        _filteredFolders = List.from(folders);
         totalDocuments = documents.length;
         totalFolders = folders.length;
         availableFileTypes = ['All', ...fileTypes];
         _isLoading = false;
       });
-print('SharedFolder JSON: $json');
-print('Folders count: ${folders.length}');
 
+      print('Folders count: ${folders.length}');
+      for (final folder in _sharedFolders) {
+        print(
+          'Id: ${folder.id}, '
+          'Name: ${folder.name}, '
+          'Owner: ${folder.owner}, '
+          'CreatedAt: ${folder.createdAt}, '
+          'ExpiresAt: ${folder.expiresAt}, '
+          'ItemCount: ${folder.itemCount}',
+        );
+      }
 
-     for (final folder in _sharedFolders) {
-  print(
-    'Id: ${folder.id}, '
-    'Name: ${folder.name}, '
-    'Owner: ${folder.owner}, '
-    'CreatedAt: ${folder.createdAt}, '
-    'ExpiresAt: ${folder.expiresAt}, '
-    'ItemCount: ${folder.itemCount}',
-  );
-}
-
-
-      // Best-effort: fetch per-folder item counts for better UX.
+      // Best-effort: fetch per-folder item counts.
       unawaited(_hydrateSharedFolderCounts(folders));
 
       // Save to local storage for offline access
       await _saveToLocalStorage();
     } catch (e) {
       if (!mounted) return;
-
       debugPrint('Error loading shared data: $e');
-
-      // Try to load from local storage as fallback
       _loadFromLocalStorage();
     }
   }
@@ -234,7 +225,6 @@ print('Folders count: ${folders.length}');
     try {
       final localDocs = await LocalStorageService.loadSharedDocuments();
 
-      // Extract file types from local docs too
       final fileTypes = localDocs
           .map((doc) => doc.type.toUpperCase())
           .toSet()
@@ -247,7 +237,7 @@ print('Folders count: ${folders.length}');
           _filteredDocuments = localDocs;
           totalDocuments = localDocs.length;
           totalFolders = 0;
-        availableFileTypes = ['All', ...fileTypes];
+          availableFileTypes = ['All', ...fileTypes];
           _hasError = true;
           _errorMessage = 'Using cached data. No internet connection.';
           _isLoading = false;
@@ -279,19 +269,16 @@ print('Folders count: ${folders.length}');
     }
   }
 
-  /// Filter documents based on search query and file type
+  /// Filter documents AND folders based on search query and file type
   void _filterDocuments({String? searchQuery, String? fileType}) {
     final query = searchQuery ?? _searchController.text;
     final type = fileType ?? _selectedFileType;
 
     setState(() {
+      // --- Filter files ---
       _filteredDocuments = _sharedDocuments.where((doc) {
-        // Apply file type filter
         final fileTypeMatch = type == 'All' || doc.type.toUpperCase() == type;
-
-        // Apply search filter if query exists
         if (query.isEmpty) return fileTypeMatch;
-
         final lowercaseQuery = query.toLowerCase();
         return fileTypeMatch &&
             (doc.name.toLowerCase().contains(lowercaseQuery) ||
@@ -307,14 +294,25 @@ print('Folders count: ${folders.length}');
                     doc.keyword.toLowerCase().contains(lowercaseQuery)) ||
                 doc.type.toLowerCase().contains(lowercaseQuery) ||
                 (doc.classification.isNotEmpty &&
-                    doc.classification.toLowerCase().contains(
-                      lowercaseQuery,
-                    )) ||
+                    doc.classification
+                        .toLowerCase()
+                        .contains(lowercaseQuery)) ||
                 (doc.details.isNotEmpty &&
                     doc.details.toLowerCase().contains(lowercaseQuery)) ||
                 (doc.folder.isNotEmpty &&
                     doc.folder.toLowerCase().contains(lowercaseQuery)));
       }).toList();
+
+      // --- Filter folders ---
+      if (query.isEmpty) {
+        _filteredFolders = List.from(_sharedFolders);
+      } else {
+        final lowercaseQuery = query.toLowerCase();
+        _filteredFolders = _sharedFolders.where((folder) {
+          return folder.name.toLowerCase().contains(lowercaseQuery) ||
+              folder.owner.toLowerCase().contains(lowercaseQuery);
+        }).toList();
+      }
     });
   }
 
@@ -383,7 +381,6 @@ print('Folders count: ${folders.length}');
 
   // ============ DOWNLOAD HELPER METHODS ============
 
-  /// Get download directory (same as My Documents)
   Future<Directory> getDownloadDirectory() async {
     if (Platform.isAndroid) {
       return await getApplicationDocumentsDirectory();
@@ -393,9 +390,6 @@ print('Folders count: ${folders.length}');
     return Directory.current;
   }
 
- 
-
-  /// Download a document (with auto-open like My Documents)
   Future<void> _downloadDocument(Document document) async {
     if (!ApiService.isConnected) {
       _showSnackBar('Cannot download while offline', Colors.orange);
@@ -436,7 +430,6 @@ print('Folders count: ${folders.length}');
       if (result['success'] == true) {
         if (!result.containsKey('fileData')) {
           if (result.containsKey('bytes')) {
-            // Normalize new download flow response to existing code path.
             result['fileData'] = result['bytes'];
           } else {
             debugPrint('fileData key missing in response');
@@ -455,10 +448,8 @@ print('Folders count: ${folders.length}');
         if (fileData is List<int>) {
           bytesToSave = fileData;
         } else if (fileData is List<dynamic>) {
-          // Convert List<dynamic> to List<int>
           bytesToSave = fileData.cast<int>();
         } else if (fileData is String) {
-          // Convert String to bytes
           bytesToSave = utf8.encode(fileData);
         } else {
           debugPrint(
@@ -469,7 +460,6 @@ print('Folders count: ${folders.length}');
           );
         }
 
-        // Check if data is not empty
         if (bytesToSave.isEmpty) {
           throw Exception('Downloaded file data is empty (0 bytes)');
         }
@@ -480,38 +470,31 @@ print('Folders count: ${folders.length}');
 
         String filename = result['filename']?.toString() ?? document.name;
 
-        // If filename is just a number (document ID), use the document name
         if (RegExp(r'^\d+$').hasMatch(filename) && document.name.isNotEmpty) {
           filename = document.name;
         }
 
-        // Ensure correct file extension
         final docName = document.name;
         if (docName.isNotEmpty) {
           final extension = path.extension(docName);
-          // If the filename doesn't have the same extension as the document name
           if (!filename.toLowerCase().endsWith(extension.toLowerCase()) &&
               extension.isNotEmpty) {
-            // Remove any existing extension from filename and add the correct one
             final nameWithoutExt = path.withoutExtension(filename);
             filename = '$nameWithoutExt$extension';
           }
         }
 
-        // Ensure .py files have correct extension
         if (document.type.toLowerCase() == 'py' &&
             !filename.toLowerCase().endsWith('.py')) {
           filename = '$filename.py';
         }
 
-        // Also check if we need to add .pdf extension
         if (document.type.toLowerCase() == 'pdf' &&
             !filename.toLowerCase().endsWith('.pdf')) {
           filename = '$filename.pdf';
         }
 
         final filePath = '${directory.path}/$filename';
-
         debugPrint('Saving to: $filePath');
 
         final file = File(filePath);
@@ -550,8 +533,6 @@ print('Folders count: ${folders.length}');
             filePath: filePath,
           );
           return;
-
-         
         } else {
           throw Exception('Failed to save file to disk');
         }
@@ -571,7 +552,6 @@ print('Folders count: ${folders.length}');
     }
   }
 
-  /// Show text content of .py files
   void _showFileContent(List<int> fileBytes, String filename) {
     try {
       final content = utf8.decode(fileBytes);
@@ -642,7 +622,6 @@ print('Folders count: ${folders.length}');
               ),
               ElevatedButton.icon(
                 onPressed: () {
-                  // Copy to clipboard
                   Clipboard.setData(ClipboardData(text: content));
                   _showSnackBar('Code copied to clipboard', Colors.green);
                   Navigator.pop(context);
@@ -660,7 +639,6 @@ print('Folders count: ${folders.length}');
     }
   }
 
-  /// Handle document double-tap
   void _handleDocumentDoubleTap(Document document) {
     _documentOpener.openPreviewDialog(context: context, document: document);
   }
@@ -756,7 +734,6 @@ print('Folders count: ${folders.length}');
     );
   }
 
-  /// Show document details
   Future<void> _showDocumentDetails(Document document) async {
     _showSnackBar('Loading document details...', Colors.blue);
 
@@ -853,22 +830,6 @@ print('Folders count: ${folders.length}');
                 onPressed: () => Navigator.pop(context),
                 child: const Text('Close'),
               ),
-              // if (document.allowDownload)
-              //   ElevatedButton(
-              //     onPressed: () {
-              //       Navigator.pop(context);
-              //       _downloadDocument(document);
-              //     },
-              //     style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-              //     child: Row(
-              //       mainAxisSize: MainAxisSize.min,
-              //       children: [
-              //         Icon(Icons.download, size: r.sp(18)),
-              //         SizedBox(width: r.p(6)),
-              //         Text('Download'),
-              //       ],
-              //     ),
-              //   ),
               ElevatedButton(
                 onPressed: () {
                   Navigator.pop(context);
@@ -897,18 +858,13 @@ print('Folders count: ${folders.length}');
     await VersionHistoryDialog.show(context, document: document);
   }
 
-
-
-  // Format date to DD-MM-YYYY (Same as Document Library)
+  // Format date to DD-MM-YYYY
   String _formatDateDDMMYYYY(dynamic date) {
     try {
-      if (date == null || date.toString().isEmpty) {
-        return 'N/A';
-      }
+      if (date == null || date.toString().isEmpty) return 'N/A';
 
       final dateStr = date.toString().trim();
 
-      // Check if date is in DD/MM/YYYY format (e.g., "29/10/2025")
       if (dateStr.contains('/')) {
         final parts = dateStr.split('/');
         if (parts.length >= 3) {
@@ -919,18 +875,15 @@ print('Folders count: ${folders.length}');
         }
       }
 
-      // Check if date is in YYYY-MM-DD format (e.g., "2025-10-29")
       if (dateStr.contains('-')) {
         final parts = dateStr.split('-');
         if (parts.length >= 3) {
-          // If first part is 4 digits, assume YYYY-MM-DD format
           if (parts[0].length == 4) {
             final year = parts[0];
             final month = parts[1].padLeft(2, '0');
             final day = parts[2].split(' ')[0].padLeft(2, '0');
             return '$day-$month-$year';
           } else {
-            // Assume DD-MM-YYYY format
             final day = parts[0].padLeft(2, '0');
             final month = parts[1].padLeft(2, '0');
             final year = parts[2];
@@ -939,7 +892,6 @@ print('Folders count: ${folders.length}');
         }
       }
 
-      // Try to parse as DateTime
       try {
         final dateTime = DateTime.parse(dateStr);
         final day = dateTime.day.toString().padLeft(2, '0');
@@ -947,7 +899,6 @@ print('Folders count: ${folders.length}');
         final year = dateTime.year.toString();
         return '$day-$month-$year';
       } catch (e) {
-        // If parsing fails, return original string
         return dateStr;
       }
     } catch (e) {
@@ -981,7 +932,6 @@ print('Folders count: ${folders.length}');
     );
   }
 
-  // Helper method to build detail row WITH icons (for the new design)
   Widget _buildDetailRowWithIcon(
     String label,
     String value,
@@ -1016,20 +966,69 @@ print('Folders count: ${folders.length}');
     );
   }
 
- 
+  // ============ EXPIRY HELPERS ============
 
+  String _getExpiryText(String? expiryDate) {
+    if (expiryDate == null ||
+        expiryDate.isEmpty ||
+        expiryDate == 'No Expiry') {
+      return 'No Expiry';
+    }
 
-  // Build document item card with COLLAPSIBLE functionality
-  Widget _buildDocumentCard(BuildContext context, Document document, int index,) {
+    try {
+      final expiry = DateTime.parse(expiryDate);
+      if (expiry.year >= 9999) return 'No Expiry';
+
+      final now = DateTime.now();
+      final difference = expiry.difference(now);
+
+      if (difference.isNegative) return 'Expired';
+
+      if (difference.inHours < 24) {
+        final hours = difference.inMinutes <= 60 ? 1 : difference.inHours + 1;
+        return 'In $hours hour${hours > 1 ? 's' : ''}';
+      }
+
+      final days = difference.inDays;
+      if (days == 1) return 'Tomorrow';
+      return 'In ${days + 1} days';
+    } catch (e) {
+      return 'No Expiry';
+    }
+  }
+
+  Color _getExpiryColor(String? expiryDate) {
+    if (expiryDate == null ||
+        expiryDate.isEmpty ||
+        expiryDate == 'No Expiry') {
+      return Colors.grey;
+    }
+
+    try {
+      final expiry = DateTime.parse(expiryDate);
+      if (expiry.year >= 9999) return Colors.grey;
+
+      final now = DateTime.now();
+      final difference = expiry.difference(now);
+
+      if (difference.isNegative) return Colors.grey;
+      if (difference.inHours < 24) return Colors.red;
+      if (difference.inDays < 7) return Colors.orange;
+      return Colors.green;
+    } catch (e) {
+      return Colors.grey;
+    }
+  }
+
+  // ============ DOCUMENT CARD ============
+
+  Widget _buildDocumentCard(BuildContext context, Document document, int index) {
     final r = context.r;
     final iconData = _getFileIcon(document.type);
     final color = _getFileColor(document.type);
-print("document upload date: ${document.name} - ${document.uploadDate}");
-    // Format the date to DD MM YYYY
+    print("document upload date: ${document.name} - ${document.uploadDate}");
     String formattedDate = _formatDateDDMMYYYY(document.uploadDate);
     String uniqueKey = document.id.isNotEmpty ? document.id : 'doc_$index';
-    // '${document.id}_${document.name}_${document.uploadDate}_${document.type}';
-    // Check if this specific document is expanded
     bool isExpanded = _expandedStates[uniqueKey] ?? false;
 
     return InkWell(
@@ -1044,7 +1043,6 @@ print("document upload date: ${document.name} - ${document.uploadDate}");
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Top row with icon, document info, and expand/collapse button
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1056,7 +1054,7 @@ print("document upload date: ${document.name} - ${document.uploadDate}");
                     ),
                     child: Icon(iconData, color: color, size: r.sp(32)),
                   ),
-                 width10,
+                  width10,
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1065,8 +1063,7 @@ print("document upload date: ${document.name} - ${document.uploadDate}");
                           children: [
                             Expanded(
                               child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
                                     document.name,
@@ -1077,25 +1074,18 @@ print("document upload date: ${document.name} - ${document.uploadDate}");
                                     maxLines: isExpanded ? 2 : 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
-                            
-                                      Text(
-                          'Type: ${document.type} • $formattedDate',
-                          style: w400_14Poppins(color: Colors.grey.shade700),
-                        ),
+                                  Text(
+                                    'Type: ${document.type} • $formattedDate',
+                                    style: w400_14Poppins(color: Colors.grey.shade700),
+                                  ),
                                 ],
                               ),
                             ),
-                            // COLLAPSIBLE EXPAND/COLLAPSE BUTTON
+                            // Expand/Collapse Button
                             GestureDetector(
                               onTap: () {
                                 setState(() {
-                                  // Toggle only this specific document using its ID
                                   _expandedStates[uniqueKey] = !isExpanded;
-
-                                  // debugPrint('Toggled document: $uniqueKey');
-                                  // debugPrint(
-                                  //   'New state: ${_expandedStates[uniqueKey]}',
-                                  // );
                                 });
                               },
                               child: AnimatedContainer(
@@ -1130,10 +1120,9 @@ print("document upload date: ${document.name} - ${document.uploadDate}");
                               ),
                             ),
                             SizedBox(width: r.p(4)),
-                            // Vertical More Options Button
+                            // More Options Button
                             IconButton(
-                              onPressed: () =>
-                                  _showDocumentActions(document),
+                              onPressed: () => _showDocumentActions(document),
                               icon: Container(
                                 width: r.p(36),
                                 height: r.p(36),
@@ -1152,15 +1141,13 @@ print("document upload date: ${document.name} - ${document.uploadDate}");
                             ),
                           ],
                         ),
-                        
-                    
                       ],
                     ),
                   ),
                 ],
               ),
 
-              // COLLAPSIBLE CONTENT SECTION
+              // Collapsible Content
               AnimatedSize(
                 duration: const Duration(milliseconds: 300),
                 curve: Curves.easeInOut,
@@ -1171,7 +1158,6 @@ print("document upload date: ${document.name} - ${document.uploadDate}");
                       SizedBox(height: r.p(16)),
                       const Divider(height: 1),
                       SizedBox(height: r.p(12)),
-                      // Metadata details section
                       if (document.keyword.isNotEmpty)
                         _buildDetailRowWithIcon(
                           'Keyword',
@@ -1208,30 +1194,30 @@ print("document upload date: ${document.name} - ${document.uploadDate}");
                         Icons.security,
                         r: r,
                       ),
-                       Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.schedule, size: r.sp(16), color: Colors.grey.shade600),
-          SizedBox(width: r.p(12)),
-          SizedBox(
-            width: r.p(100) ,
-            child: Text(
-              "Expires in: ",
-              style: w400_14Poppins(color: Colors.black87),
-            ),
-          ),
-          SizedBox(width: r.p(8)),
-          Expanded(
-            child: Text(
-              _getExpiryText(document.expiresAt),
-              style: w400_14Poppins(color: _getExpiryColor(document.expiresAt)),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      ),
-                    
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.schedule, size: r.sp(16), color: Colors.grey.shade600),
+                          SizedBox(width: r.p(12)),
+                          SizedBox(
+                            width: r.p(100),
+                            child: Text(
+                              "Expires in: ",
+                              style: w400_14Poppins(color: Colors.black87),
+                            ),
+                          ),
+                          SizedBox(width: r.p(8)),
+                          Expanded(
+                            child: Text(
+                              _getExpiryText(document.expiresAt),
+                              style: w400_14Poppins(
+                                  color: _getExpiryColor(document.expiresAt)),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
                       if (document.details.isNotEmpty)
                         _buildDetailRowWithIcon(
                           'Details',
@@ -1240,30 +1226,22 @@ print("document upload date: ${document.name} - ${document.uploadDate}");
                           r: r,
                         ),
                       SizedBox(height: r.p(16)),
-
-                      // ACTION BUTTONS ROW
+                      // Action Buttons
                       Row(
                         children: [
-                          // VIEW BUTTON
                           Expanded(
                             child: OutlinedButton.icon(
-                              onPressed: () =>
-                                  _handleDocumentDoubleTap(document),
+                              onPressed: () => _handleDocumentDoubleTap(document),
                               icon: Icon(Icons.visibility, size: r.sp(18)),
                               label: const Text('View'),
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: Colors.purple,
                                 side: const BorderSide(color: Colors.purple),
-                                padding: EdgeInsets.symmetric(
-                                  vertical: r.p(10),
-                                ),
+                                padding: EdgeInsets.symmetric(vertical: r.p(10)),
                               ),
                             ),
                           ),
-
                           SizedBox(width: r.p(8)),
-
-                          // VERSIONS BUTTON
                           Expanded(
                             child: OutlinedButton.icon(
                               onPressed: () => _showDocumentVersions(document),
@@ -1272,59 +1250,10 @@ print("document upload date: ${document.name} - ${document.uploadDate}");
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: Colors.blue,
                                 side: const BorderSide(color: Colors.blue),
-                                padding: EdgeInsets.symmetric(
-                                  vertical: r.p(10),
-                                ),
+                                padding: EdgeInsets.symmetric(vertical: r.p(10)),
                               ),
                             ),
                           ),
-
-                          SizedBox(width: r.p(8)),
-
-                          // DOWNLOAD BUTTON (conditionally enabled)
-                          // Expanded(
-                          //   child: document.allowDownload
-                          //       ? OutlinedButton.icon(
-                          //           onPressed: () =>
-                          //               _downloadDocument(document),
-                          //           icon: Icon(Icons.download, size: r.sp(18)),
-                          //           label: const Text('Download'),
-                          //           style: OutlinedButton.styleFrom(
-                          //             foregroundColor: Colors.green,
-                          //             side: const BorderSide(
-                          //               color: Colors.green,
-                          //             ),
-                          //             padding: EdgeInsets.symmetric(
-                          //               vertical: r.p(10),
-                          //             ),
-                          //           ),
-                          //         )
-                          //       : ElevatedButton.icon(
-                          //           onPressed: () =>
-                          //               _showDownloadRestrictedPopup(context, document),
-                          //           icon: Icon(
-                          //             Icons.download,
-                          //             size: r.sp(18),
-                          //             color: Colors.grey.shade300,
-                          //           ),
-                          //           label: Text(
-                          //             'Download',
-                          //             style: TextStyle(
-                          //               color: Colors.grey.shade300,
-                          //             ),
-                          //           ),
-                          //           style: ElevatedButton.styleFrom(
-                          //             backgroundColor: Colors.grey.shade200,
-                          //             foregroundColor: Colors.grey.shade300,
-                          //             padding: EdgeInsets.symmetric(
-                          //               vertical: r.p(10),
-                          //             ),
-                          //             shape: RoundedRectangleBorder(
-                          //               borderRadius: BorderRadius.circular(r.p(8)),
-                          //             ),
-                          //           ),
-                          //         ),
-                          // ),
                         ],
                       ),
                     ],
@@ -1338,90 +1267,8 @@ print("document upload date: ${document.name} - ${document.uploadDate}");
     );
   }
 
+  // ============ LAYOUT MODES ============
 
-  
- String _getExpiryText(String? expiryDate) {
-  if (expiryDate == null ||
-      expiryDate.isEmpty ||
-      expiryDate == 'No Expiry') {
-    return 'No Expiry';
-  }
-
-  try {
-    final expiry = DateTime.parse(expiryDate);
-
-    // Handle permanent shares (9999 date)
-    if (expiry.year >= 9999) {
-      return 'No Expiry';
-    }
-
-    final now = DateTime.now();
-    final difference = expiry.difference(now);
-
-    // Already expired
-    if (difference.isNegative) {
-      return 'Expired';
-    }
-
-    // Less than 24 hours remaining
-    if (difference.inHours < 24) {
-      final hours =
-          difference.inMinutes <= 60 ? 1 : difference.inHours + 1;
-
-      return 'In $hours hour${hours > 1 ? 's' : ''}';
-    }
-
-    // Calculate remaining days
-    final days = difference.inDays;
-
-    if (days == 1) {
-      return 'Tomorrow';
-    }
-
-    return 'In ${days + 1} days';
-  } catch (e) {
-    return 'No Expiry';
-  }
-}
-
-Color _getExpiryColor(String? expiryDate) {
-  if (expiryDate == null ||
-      expiryDate.isEmpty ||
-      expiryDate == 'No Expiry') {
-    return Colors.grey;
-  }
-
-  try {
-    final expiry = DateTime.parse(expiryDate);
-
-    if (expiry.year >= 9999) {
-      return Colors.grey;
-    }
-
-    final now = DateTime.now();
-    final difference = expiry.difference(now);
-
-    if (difference.isNegative) {
-      return Colors.grey; // Expired
-    }
-
-    if (difference.inHours < 24) {
-      return Colors.red; // In X hours
-    }
-
-    if (difference.inDays < 7) {
-      return Colors.orange; // Tomorrow to 7 days
-    }
-
-    return Colors.green; // More than 7 days
-  } catch (e) {
-    return Colors.grey;
-  }
-}
-
-  // ============ FEATURE 2: LAYOUT MODES ============
-
-  /// Method to build layout selector
   Widget _buildLayoutSelector() {
     return ViewModePopupButton(
       value: _currentViewMode,
@@ -1429,13 +1276,12 @@ Color _getExpiryColor(String? expiryDate) {
     );
   }
 
-  /// Method to build documents content based on view mode
   Widget _buildDocumentsContent(List<Document> documents) {
     switch (_currentViewMode) {
       case AppViewMode.list:
         return ListView.builder(
-          // shrinkWrap: true,
-          // physics: const NeverScrollableScrollPhysics(),
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
           itemCount: documents.length,
           itemBuilder: (context, index) {
             return _buildDocumentCard(context, documents[index], index);
@@ -1492,8 +1338,8 @@ Color _getExpiryColor(String? expiryDate) {
         );
       case AppViewMode.detailed:
         return ListView.builder(
-          // shrinkWrap: true,
-          // physics: const NeverScrollableScrollPhysics(),
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
           itemCount: documents.length,
           itemBuilder: (context, index) {
             return _buildDocumentDetailedItem(context, documents[index], index);
@@ -1521,7 +1367,7 @@ Color _getExpiryColor(String? expiryDate) {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Container(
-                padding: EdgeInsets.all(columns == 2 ? r.p(8) : r.p(8)),
+                padding: EdgeInsets.all(r.p(8)),
                 decoration: BoxDecoration(
                   color: color.withAlpha(20),
                   borderRadius: BorderRadius.circular(r.p(12)),
@@ -1593,7 +1439,7 @@ Color _getExpiryColor(String? expiryDate) {
                   color: _getFileColor(document.type),
                   size: r.sp(18),
                 ),
-               width10,
+                width10,
                 Expanded(
                   child: Text(
                     document.name,
@@ -1667,11 +1513,7 @@ Color _getExpiryColor(String? expiryDate) {
                             Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(
-                                  Icons.person,
-                                  size: r.sp(12),
-                                  color: Colors.grey,
-                                ),
+                                Icon(Icons.person, size: r.sp(12), color: Colors.grey),
                                 SizedBox(width: r.p(4)),
                                 Flexible(
                                   child: Text(
@@ -1688,11 +1530,7 @@ Color _getExpiryColor(String? expiryDate) {
                             Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(
-                                  Icons.folder,
-                                  size: r.sp(12),
-                                  color: Colors.grey,
-                                ),
+                                Icon(Icons.folder, size: r.sp(12), color: Colors.grey),
                                 SizedBox(width: r.p(4)),
                                 Flexible(
                                   child: Text(
@@ -1716,11 +1554,7 @@ Color _getExpiryColor(String? expiryDate) {
                             Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(
-                                  Icons.calendar_today,
-                                  size: r.sp(12),
-                                  color: Colors.grey,
-                                ),
+                                Icon(Icons.calendar_today, size: r.sp(12), color: Colors.grey),
                                 SizedBox(width: r.p(4)),
                                 Text(
                                   _formatDateDDMMYYYY(document.uploadDate),
@@ -1734,11 +1568,7 @@ Color _getExpiryColor(String? expiryDate) {
                             Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(
-                                  Icons.security,
-                                  size: r.sp(12),
-                                  color: Colors.grey,
-                                ),
+                                Icon(Icons.security, size: r.sp(12), color: Colors.grey),
                                 SizedBox(width: r.p(4)),
                                 Text(
                                   document.classification,
@@ -1749,7 +1579,6 @@ Color _getExpiryColor(String? expiryDate) {
                                 ),
                               ],
                             ),
-                            
                           ],
                         ),
                       ],
@@ -1780,11 +1609,7 @@ Color _getExpiryColor(String? expiryDate) {
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: () => _handleDocumentDoubleTap(document),
-                      icon: Icon(
-                        Icons.visibility,
-                        size: r.sp(14),
-                        color: Colors.purple,
-                      ),
+                      icon: Icon(Icons.visibility, size: r.sp(14), color: Colors.purple),
                       label: Text(
                         'View',
                         style: TextStyle(fontSize: r.sp(12), color: Colors.purple),
@@ -1815,17 +1640,10 @@ Color _getExpiryColor(String? expiryDate) {
                     child: document.allowDownload
                         ? OutlinedButton.icon(
                             onPressed: () => _downloadDocument(document),
-                            icon: Icon(
-                              Icons.download,
-                              size: r.sp(14),
-                              color: Colors.green,
-                            ),
+                            icon: Icon(Icons.download, size: r.sp(14), color: Colors.green),
                             label: Text(
                               'Download',
-                              style: TextStyle(
-                                fontSize: r.sp(12),
-                                color: Colors.green,
-                              ),
+                              style: TextStyle(fontSize: r.sp(12), color: Colors.green),
                             ),
                             style: OutlinedButton.styleFrom(
                               side: const BorderSide(color: Colors.green),
@@ -1866,11 +1684,8 @@ Color _getExpiryColor(String? expiryDate) {
     );
   }
 
-  // ============ FEATURE 3: FILE TYPE FILTER ============
+  // ============ FILE TYPE FILTER BADGE ============
 
- 
-
-  /// Show file type filter badge
   Widget _buildFileTypeBadge(ResponsiveHelper r) {
     if (_selectedFileType == 'All') return const SizedBox.shrink();
 
@@ -1960,8 +1775,100 @@ Color _getExpiryColor(String? expiryDate) {
     );
   }
 
+  // ============ SECTION HEADER ============
 
-  /// Build empty state widget
+  Widget _buildSectionHeader(String title, int count, IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: Colors.indigo),
+          const SizedBox(width: 6),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: Colors.indigo,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.indigo.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              '$count',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Colors.indigo,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============ FOLDER CARD ============
+
+  Widget _buildFolderCard(SharedFolder folder) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      elevation: 0.5,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: ListTile(
+        leading: const Icon(Icons.folder, color: Colors.amber, size: 32),
+        title: Text(
+          folder.name,
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Owner: ${folder.owner}'),
+            Text('Created: ${folder.createdAt}'),
+            if (folder.itemCount >= 0)
+              Text('${folder.itemCount} item${folder.itemCount == 1 ? '' : 's'}'),
+            RichText(
+              text: TextSpan(
+                text: 'Expires: ',
+                style: const TextStyle(fontSize: 13, color: Colors.black87),
+                children: [
+                  TextSpan(
+                    text: _getExpiryText(folder.expiresAt),
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: _getExpiryColor(folder.expiresAt),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => SharedFolderScreen(
+                folderId: folder.id,
+                folderName: folder.name,
+                userName: folder.owner,
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // ============ EMPTY STATE ============
+
   Widget _buildEmptyState(ResponsiveHelper r) {
     return Center(
       child: Column(
@@ -1977,8 +1884,8 @@ Color _getExpiryColor(String? expiryDate) {
           SizedBox(height: r.p(20)),
           Text(
             _searchController.text.isEmpty
-                ? (_hasError ? 'Unable to Load Data' : 'No Shared Documents')
-                : 'No Documents Found',
+                ? (_hasError ? 'Unable to Load Data' : 'No Shared Items')
+                : 'No Results Found',
             style: TextStyle(
               fontSize: r.sp(20),
               fontWeight: FontWeight.bold,
@@ -1993,7 +1900,7 @@ Color _getExpiryColor(String? expiryDate) {
                   ? _errorMessage
                   : _searchController.text.isEmpty
                   ? 'Documents and folders shared with you will appear here'
-                  : 'No documents found for "${_searchController.text}"',
+                  : 'No results found for "${_searchController.text}"',
               style: TextStyle(fontSize: r.sp(14), color: Colors.grey.shade600),
               textAlign: TextAlign.center,
             ),
@@ -2024,7 +1931,6 @@ Color _getExpiryColor(String? expiryDate) {
     );
   }
 
-  /// Show snackbar
   void _showSnackBar(String message, Color backgroundColor) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -2035,134 +1941,8 @@ Color _getExpiryColor(String? expiryDate) {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final r = context.r;
-    return DismissKeyboard(child: Scaffold(
-     
-      body: ResponsivePage(
-        padding: EdgeInsets.zero,
-        child: Column(
-          children: [
-            // Search and stats section
-            Container(
-              padding: EdgeInsets.all(r.p(16)),
-        
-              child: Column(
-                children: [
-                // Search bar with filters
-                Row(
-                  children: [
-                    Expanded(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(r.p(12)),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.grey.withAlpha(10),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: TextField(
-                          controller: _searchController,
-                          onChanged: (value) =>
-                              _filterDocuments(searchQuery: value),
-                          maxLines: 1,
-                          decoration: InputDecoration(
-                            hintText: 'Search documents, owners, keywords...',
-                            hintStyle: TextStyle(color: Colors.grey.shade600),
-                            prefixIcon: const Icon(
-                              Icons.search,
-                              color: Colors.indigo,
-                            ),
-                            suffixIcon: _searchController.text.isNotEmpty
-                                ? IconButton(
-                                    icon: const Icon(Icons.clear),
-                                    color: Colors.grey,
-                                    onPressed: _clearSearch,
-                                  )
-                                : null,
-                            filled: true,
-                            fillColor: Colors.white,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(r.p(12)),
-                              borderSide: BorderSide.none,
-                            ),
-                            contentPadding: EdgeInsets.symmetric(
-                              vertical: r.p(14),
-                              horizontal: r.p(16),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    SizedBox(width: r.p(10)),
-                    _buildLayoutSelector(),
-                    SizedBox(width: r.p(12)),
-                  
-                  ],
-                ),
-                SizedBox(height: r.p(8)),
-                // Stats row with filter badge
-                Row(
-                  children: [
-                    Text(
-                      '${_filteredDocuments.length} document${_filteredDocuments.length == 1 ? '' : 's'}',
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                        fontSize: r.sp(13),
-                      ),
-                    ),
-                    _buildFileTypeBadge(r),
-                   
-                  ],
-                ),
-              ],
-            ),
-          ),
+  // ============ DOWNLOADING BANNER ============
 
-          // Loading/Downloading Banner
-          if (_isDownloading) _buildDownloadingBanner(r),
-
-          // Main Content Area
-          if (_isLoading)
-            Expanded(
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const CircularProgressIndicator(
-                      color: Colors.indigo,
-                      strokeWidth: 2,
-                    ),
-                height10,
-                    Text(
-                      'Loading shared documents...',
-                      style: TextStyle(color: Colors.grey.shade600),
-                    ),
-                  ],
-                ),
-              ),
-            )
-          else if (_filteredDocuments.isEmpty)
-            Expanded(child: _buildEmptyState(r))
-          else
-            Expanded(
-              child: RefreshIndicator(
-                onRefresh: _loadSharedData,
-                color: Colors.indigo,
-                child: _buildDocumentsContent(_filteredDocuments),
-              ),
-            ),
-        ],
-      ),
-    ),
-    ));
-  }
-
-  /// Downloading banner widget
   Widget _buildDownloadingBanner(ResponsiveHelper r) {
     return Container(
       width: double.infinity,
@@ -2186,6 +1966,173 @@ Color _getExpiryColor(String? expiryDate) {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // ============ BUILD ============
+
+  @override
+  Widget build(BuildContext context) {
+    final r = context.r;
+    final bool bothEmpty =
+        _filteredFolders.isEmpty && _filteredDocuments.isEmpty;
+
+    return DismissKeyboard(
+      child: Scaffold(
+        body: ResponsivePage(
+          padding: EdgeInsets.zero,
+          child: Column(
+            children: [
+              // ── Search bar + layout toggle ──────────────────────────────
+              Container(
+                padding: EdgeInsets.all(r.p(16)),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(r.p(12)),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.grey.withAlpha(10),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: TextField(
+                              controller: _searchController,
+                              onChanged: (value) =>
+                                  _filterDocuments(searchQuery: value),
+                              maxLines: 1,
+                              decoration: InputDecoration(
+                                hintText: 'Search files, folders, owners...',
+                                hintStyle: TextStyle(color: Colors.grey.shade600),
+                                prefixIcon: const Icon(
+                                  Icons.search,
+                                  color: Colors.indigo,
+                                ),
+                                suffixIcon: _searchController.text.isNotEmpty
+                                    ? IconButton(
+                                        icon: const Icon(Icons.clear),
+                                        color: Colors.grey,
+                                        onPressed: _clearSearch,
+                                      )
+                                    : null,
+                                filled: true,
+                                fillColor: Colors.white,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(r.p(12)),
+                                  borderSide: BorderSide.none,
+                                ),
+                                contentPadding: EdgeInsets.symmetric(
+                                  vertical: r.p(14),
+                                  horizontal: r.p(16),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        SizedBox(width: r.p(10)),
+                        _buildLayoutSelector(),
+                        SizedBox(width: r.p(12)),
+                      ],
+                    ),
+                    SizedBox(height: r.p(8)),
+                    // Stats row
+                    Row(
+                      children: [
+                        Text(
+                          '${_filteredFolders.length} folder${_filteredFolders.length == 1 ? '' : 's'}  •  '
+                          '${_filteredDocuments.length} file${_filteredDocuments.length == 1 ? '' : 's'}',
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: r.sp(13),
+                          ),
+                        ),
+                        _buildFileTypeBadge(r),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+              // ── Downloading banner ──────────────────────────────────────
+              if (_isDownloading) _buildDownloadingBanner(r),
+
+              // ── Main content ────────────────────────────────────────────
+              if (_isLoading)
+                Expanded(
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const CircularProgressIndicator(
+                          color: Colors.indigo,
+                          strokeWidth: 2,
+                        ),
+                        height10,
+                        Text(
+                          'Loading shared documents...',
+                          style: TextStyle(color: Colors.grey.shade600),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else if (bothEmpty)
+                Expanded(child: _buildEmptyState(r))
+              else
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh: _loadSharedData,
+                    color: Colors.indigo,
+                    child: CustomScrollView(
+                      slivers: [
+                        // ── Folders section ─────────────────────────────
+                        if (_filteredFolders.isNotEmpty) ...[
+                          SliverToBoxAdapter(
+                            child: _buildSectionHeader(
+                              'Folders',
+                              _filteredFolders.length,
+                              Icons.folder_open,
+                            ),
+                          ),
+                          SliverList(
+                            delegate: SliverChildBuilderDelegate(
+                              (context, index) =>
+                                  _buildFolderCard(_filteredFolders[index]),
+                              childCount: _filteredFolders.length,
+                            ),
+                          ),
+                          const SliverToBoxAdapter(child: SizedBox(height: 8)),
+                        ],
+
+                        // ── Files section ────────────────────────────────
+                        if (_filteredDocuments.isNotEmpty) ...[
+                          SliverToBoxAdapter(
+                            child: _buildSectionHeader(
+                              'Files',
+                              _filteredDocuments.length,
+                              Icons.file_copy_outlined,
+                            ),
+                          ),
+                          SliverToBoxAdapter(
+                            child: _buildDocumentsContent(_filteredDocuments),
+                          ),
+                        ],
+
+                        const SliverToBoxAdapter(child: SizedBox(height: 24)),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }

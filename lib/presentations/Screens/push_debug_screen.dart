@@ -66,7 +66,7 @@ class _PushDebugScreenState extends State<PushDebugScreen> {
     );
     const init = InitializationSettings(android: androidInit, iOS: iosInit);
     try {
-      await _local.initialize(settings: init);
+      await _local.initialize(init);
     } catch (_) {}
 
     if (Platform.isAndroid) {
@@ -203,7 +203,8 @@ class _PushDebugScreenState extends State<PushDebugScreen> {
         _setStatus('Login first (no JWT/access token found).');
         return;
       }
-      final res = await ApiClient.instance.dio.get('/notifications/push-status');
+      final res =
+          await ApiClient.instance.dio.get('/notifications/push-status');
       final pretty = const JsonEncoder.withIndent('  ').convert(res.data);
       if (!mounted) return;
       setState(() => _pushStatusJson = pretty);
@@ -227,10 +228,10 @@ class _PushDebugScreenState extends State<PushDebugScreen> {
     setState(() => _busy = true);
     try {
       await _local.show(
-        id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-        title: 'Local test notification',
-        body: 'If you see this, local notifications work.',
-        notificationDetails: const NotificationDetails(
+        DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        'Local test notification',
+        'If you see this, local notifications work.',
+        const NotificationDetails(
           android: AndroidNotificationDetails(
             'push_default',
             'Push Notifications',
@@ -332,7 +333,7 @@ class _PushDebugScreenState extends State<PushDebugScreen> {
               borderRadius: BorderRadius.circular(8),
             ),
             child: SelectableText(
-              _pushStatusJson ?? '(tap “Push status”)',
+              _pushStatusJson ?? '(tap "Push status")',
               style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
             ),
           ),
