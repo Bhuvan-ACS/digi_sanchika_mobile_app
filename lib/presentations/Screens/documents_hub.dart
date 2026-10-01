@@ -113,7 +113,7 @@ class _DocumentsHubState extends State<DocumentsHub> {
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       child: Container(
-         width: 150.w,
+         width: 136.w,
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: Colors.white,

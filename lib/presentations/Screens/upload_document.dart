@@ -4,6 +4,7 @@ import 'package:digi_sanchika/utils/app_fonts.dart';
 import 'package:digi_sanchika/utils/responsive_helper.dart';
 import 'package:digi_sanchika/utils/design_tokens.dart';
 import 'package:digi_sanchika/services/upload_service.dart';
+import 'package:digi_sanchika/services/android_media_picker_service.dart';
 import 'package:digi_sanchika/services/folder_helper.dart';
 import 'package:digi_sanchika/services/folder_operations_service.dart';
 import 'package:digi_sanchika/models/folder_tree_node.dart';
@@ -1628,11 +1629,7 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
                 title: const Text('Document Files'),
                 onTap: () => Navigator.pop(context, 'document'),
               ),
-              ListTile(
-                leading: const Icon(Icons.code),
-                title: const Text('Code Files'),
-                onTap: () => Navigator.pop(context, 'code'),
-              ),
+            
               ListTile(
                 leading: const Icon(Icons.insert_drive_file),
                 title: const Text('All Files'),
@@ -1655,16 +1652,30 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
           );
           break;
         case 'video':
-          result = await FilePicker.platform.pickFiles(
-            type: FileType.video,
-            allowMultiple: false,
-          );
+          if (Platform.isAndroid) {
+            final files = await AndroidMediaPickerService.pickVideos(
+              allowMultiple: false,
+            );
+            result = files.isEmpty ? null : FilePickerResult(files);
+          } else {
+            result = await FilePicker.platform.pickFiles(
+              type: FileType.video,
+              allowMultiple: false,
+            );
+          }
           break;
         case 'image':
-          result = await FilePicker.platform.pickFiles(
-            type: FileType.image,
-            allowMultiple: false,
-          );
+          if (Platform.isAndroid) {
+            final files = await AndroidMediaPickerService.pickImages(
+              allowMultiple: false,
+            );
+            result = files.isEmpty ? null : FilePickerResult(files);
+          } else {
+            result = await FilePicker.platform.pickFiles(
+              type: FileType.image,
+              allowMultiple: false,
+            );
+          }
           break;
         case 'document':
           result = await FilePicker.platform.pickFiles(
@@ -1929,10 +1940,17 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
           ];
           break;
         case 'video':
-          result = await FilePicker.platform.pickFiles(
-            type: FileType.video,
-            allowMultiple: true,
-          );
+          if (Platform.isAndroid) {
+            final files = await AndroidMediaPickerService.pickVideos(
+              allowMultiple: true,
+            );
+            result = files.isEmpty ? null : FilePickerResult(files);
+          } else {
+            result = await FilePicker.platform.pickFiles(
+              type: FileType.video,
+              allowMultiple: true,
+            );
+          }
           selectedExtensions = [
             'mp4',
             'mov',
@@ -1951,10 +1969,17 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
           ];
           break;
         case 'image':
-          result = await FilePicker.platform.pickFiles(
-            type: FileType.image,
-            allowMultiple: true,
-          );
+          if (Platform.isAndroid) {
+            final files = await AndroidMediaPickerService.pickImages(
+              allowMultiple: true,
+            );
+            result = files.isEmpty ? null : FilePickerResult(files);
+          } else {
+            result = await FilePicker.platform.pickFiles(
+              type: FileType.image,
+              allowMultiple: true,
+            );
+          }
           selectedExtensions = [
             'jpg',
             'jpeg',
@@ -2659,6 +2684,7 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
       // backgroundColor: Colors.transparent,
       appBar: AppBar(
         automaticallyImplyLeading: false,
+        centerTitle: true,
         title:  Text('Upload Files',style: w700_20Poppins(color: Colors.indigo),),
        actions: [
           IconButton(
