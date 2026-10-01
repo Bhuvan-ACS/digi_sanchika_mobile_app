@@ -1555,7 +1555,7 @@ class _FolderScreenState extends State<FolderScreen> {
           ),
         ),
         PopupMenuItem<AppViewMode>(
-          value: AppViewMode.grid2x2,
+          value: AppViewMode.grid2x2,  
           child: Row(
             children: [
               Icon(Icons.grid_on, color: AppColors.primary),
