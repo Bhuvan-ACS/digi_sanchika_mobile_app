@@ -5,14 +5,14 @@ import 'package:digi_sanchika/presentations/Screens/login_page.dart';
 import 'package:digi_sanchika/screens/onboarding_screen.dart';
 import 'package:digi_sanchika/services/api_service.dart';
 import 'package:digi_sanchika/services/token_storage.dart';
+import 'package:digi_sanchika/theme/ui_theme.dart';
+import 'package:digi_sanchika/widgets/bird_animation.dart';
+import 'package:digi_sanchika/widgets/brand_wordmark.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const _kPrimary   = Color(0xFF2D4EE8);
-const _kDeepBlue  = Color(0xFF2540D4);
-const _kLightBlue = Color(0xFF3A5AF0);
 
 /// Key stored in SharedPreferences once the user finishes or skips onboarding.
 const _kOnboardingDoneKey = 'onboarding_complete';
@@ -48,7 +48,7 @@ class _SplashScreenState extends State<SplashScreen>
 
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.light,
+      statusBarIconBrightness: Brightness.dark,
     ));
 
     // ── Entry (fade + scale) ───────────────────────────────────────────────
@@ -152,24 +152,16 @@ class _SplashScreenState extends State<SplashScreen>
   // ── Build ─────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final birdSize = (size.width * 0.82).clamp(220.0, 380.0);
+
     return Scaffold(
       body: Container(
         width: double.infinity,
         height: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [_kPrimary, _kLightBlue, _kDeepBlue],
-          ),
-        ),
+        decoration: const BoxDecoration(gradient: UiColors.lightGradient),
         child: Stack(
           children: [
-            // Decorative circles
-            const _Circle(size: 260, top: -30, right: -60),
-            const _Circle(size: 280, bottom: -60, left: -80),
-
-            // Logo + app name
             Center(
               child: FadeTransition(
                 opacity: _fadeAnim,
@@ -178,74 +170,19 @@ class _SplashScreenState extends State<SplashScreen>
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Icon card
-                      Container(
-                        width: 80,
-                        height: 80,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(22),
-                          border: Border.all(
-                            color: Colors.white.withOpacity(0.2),
-                            width: 1,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.15),
-                              blurRadius: 24,
-                              offset: const Offset(0, 8),
-                            ),
-                          ],
+                      BirdFlyAnimation(size: birdSize),
+                      const SizedBox(height: 8),
+                      const BrandWordmark(),
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Your all-in-one digital document workspace',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 14.5,
+                          height: 1.45,
+                          letterSpacing: 0.1,
+                          color: UiColors.muted,
                         ),
-                        child: Center(
-                          child: Image.asset(
-                            'assets/images/digi-sanchika-logo.png',
-                            width: 44,
-                            height: 44,
-                            fit: BoxFit.contain,
-                            errorBuilder: (_, __, ___) => const Icon(
-                              Icons.article_outlined,
-                              color: Colors.white,
-                              size: 36,
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 28),
-
-                      // App name row
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Text(
-                            'ACS',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 5,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Container(
-                            width: 4, height: 4,
-                            decoration: const BoxDecoration(
-                              color: Colors.white,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          const Text(
-                            'Document Hub',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.w400,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                        ],
                       ),
                     ],
                   ),
@@ -292,7 +229,7 @@ class _LoaderBar extends StatelessWidget {
               width: _trackWidth,
               height: _height,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.25),
+                color: UiColors.royalBlue.withValues(alpha: 0.18),
                 borderRadius: BorderRadius.circular(_height / 2),
               ),
             ),
@@ -301,49 +238,17 @@ class _LoaderBar extends StatelessWidget {
               width: _trackWidth * animation.value,
               height: _height,
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: UiColors.royalBlue,
                 borderRadius: BorderRadius.circular(_height / 2),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.white.withOpacity(0.6),
+                    color: UiColors.royalBlue.withValues(alpha: 0.4),
                     blurRadius: 6,
                   ),
                 ],
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Decorative positioned circle ─────────────────────────────────────────────
-class _Circle extends StatelessWidget {
-  final double size;
-  final double? top, bottom, left, right;
-
-  const _Circle({
-    required this.size,
-    this.top,
-    this.bottom,
-    this.left,
-    this.right,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Positioned(
-      top: top,
-      bottom: bottom,
-      left: left,
-      right: right,
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: Colors.white.withOpacity(0.07),
         ),
       ),
     );

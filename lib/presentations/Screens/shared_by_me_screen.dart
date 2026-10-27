@@ -6,6 +6,13 @@ import 'package:digi_sanchika/utils/app_fonts.dart';
 import 'package:digi_sanchika/utils/responsive_helper.dart';
 import 'package:digi_sanchika/widgets/dismiss_keyboard.dart';
 import 'package:digi_sanchika/widgets/responsive_page.dart';
+import 'package:digi_sanchika/widgets/section_panel.dart';
+import 'package:digi_sanchika/models/app_view_mode.dart';
+import 'package:digi_sanchika/services/my_documents_service.dart';
+import 'package:digi_sanchika/widgets/ai_sparkle_button.dart';
+import 'package:digi_sanchika/widgets/home_components.dart';
+import 'package:digi_sanchika/widgets/layout_capsule.dart';
+import 'package:digi_sanchika/widgets/share_empty_illustration.dart';
 import 'package:flutter/material.dart';
 
 class SharedByMeScreen extends StatefulWidget {
@@ -33,6 +40,9 @@ class _SharedByMeScreenState extends State<SharedByMeScreen> {
 
   // Collapsible states — keyed by share id
   final Map<String, bool> _expandedStates = {};
+
+  AppViewMode _viewMode = AppViewMode.list;
+  bool _aiSearching = false;
 
   @override
   void initState() {
@@ -113,6 +123,243 @@ class _SharedByMeScreenState extends State<SharedByMeScreen> {
   void _clearSearch() {
     _searchController.clear();
     _filter('');
+  }
+
+  /// AI assistant search over documents I own (POST /search/semantic, scope
+  /// `my`), narrowed to the ones I've shared. Folders still match by name or
+  /// recipient.
+  Future<void> _runAiSearch(String query) async {
+    setState(() => _aiSearching = true);
+    final result = await MyDocumentsService.semanticSearch(
+      query: query,
+      scope: 'my',
+      limit: 50,
+    );
+    if (!mounted) return;
+    setState(() => _aiSearching = false);
+    final results = result['results'];
+    if (result['success'] != true || results is! List) {
+      _filter(query);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${result['error'] ?? 'AI search failed'}. Showing name matches.',
+          ),
+        ),
+      );
+      return;
+    }
+    final ids = results.map((r) => r['documentId'].toString()).toList();
+    _filter(query);
+    setState(() {
+      _filteredDocuments =
+          _documents.where((e) => ids.contains(e.document.id)).toList()
+            ..sort(
+              (a, b) => ids
+                  .indexOf(a.document.id)
+                  .compareTo(ids.indexOf(b.document.id)),
+            );
+    });
+  }
+
+  ShareGrant _grantFor(Share share, ShareEntityType type) =>
+      share.viaGroup != null
+      ? ShareGrant.group({'id': share.id}, entityType: type)
+      : ShareGrant.direct({'id': share.id}, entityType: type);
+
+  void _openFolder(FolderElement item) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SharedFolderScreen(
+          folderId: item.folder.id,
+          folderName: item.folder.name,
+          userName: item.sharedWith.fullName,
+        ),
+      ),
+    );
+  }
+
+  /// Grid cards keep the list card's full details one tap away.
+  void _showDocumentDetails(DocumentElement item, int index) {
+    final key = item.share.id.isNotEmpty ? item.share.id : 'doc_$index';
+    _expandedStates[key] = true;
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => Dialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16),
+        backgroundColor: Colors.transparent,
+        child: SingleChildScrollView(child: _buildDocumentCard(item, index)),
+      ),
+    ).then((_) {
+      if (mounted) setState(() => _expandedStates[key] = false);
+    });
+  }
+
+  // ── Grid layouts ─────────────────────────────────────────────────────────────
+
+  /// Same cell geometry as the document gallery: 12px gaps, 4px inset.
+  Widget _buildGrid(List<Widget> cards) {
+    final compact = _viewMode == AppViewMode.grid3x3;
+    final columns = compact ? 3 : 2;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = (constraints.maxWidth - (columns - 1) * 12) / columns;
+        return Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            for (final card in cards)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: SizedBox(
+                  width: width - 8,
+                  height: compact ? 112 : null,
+                  child: card,
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _gridCard({
+    required IconData icon,
+    required Color color,
+    required String name,
+    required String subtitle,
+    required bool isRevoked,
+    required VoidCallback? onTap,
+    required VoidCallback onRevoke,
+  }) {
+    final compact = _viewMode == AppViewMode.grid3x3;
+    final tint = isRevoked ? Colors.grey : color;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0x96E1E5F0)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(22),
+            blurRadius: 14,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: compact ? 28 : 52,
+                      height: compact ? 28 : 52,
+                      decoration: BoxDecoration(
+                        color: tint.withAlpha(20),
+                        borderRadius: BorderRadius.circular(compact ? 9 : 16),
+                      ),
+                      child: Icon(icon, color: tint, size: compact ? 18 : 30),
+                    ),
+                    const Spacer(),
+                    if (isRevoked)
+                      Icon(
+                        Icons.block,
+                        color: Colors.grey,
+                        size: compact ? 14 : 18,
+                      )
+                    else
+                      SizedBox.square(
+                        dimension: compact ? 24 : 32,
+                        child: IconButton(
+                          tooltip: 'Revoke access',
+                          padding: EdgeInsets.zero,
+                          iconSize: compact ? 16 : 20,
+                          icon: Icon(
+                            Icons.link_off_rounded,
+                            color: Colors.red.shade400,
+                          ),
+                          onPressed: onRevoke,
+                        ),
+                      ),
+                  ],
+                ),
+                SizedBox(height: compact ? 4 : 10),
+                Text(
+                  name,
+                  maxLines: compact ? 2 : 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: compact ? 13 : 14.5,
+                    height: 1.25,
+                    fontWeight: compact ? FontWeight.w700 : FontWeight.w600,
+                    color: isRevoked ? Colors.grey : const Color(0xFF1E293B),
+                    decoration: isRevoked ? TextDecoration.lineThrough : null,
+                  ),
+                ),
+                SizedBox(height: compact ? 2 : 4),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: compact ? 10 : 12,
+                    color: const Color(0xFF94A3B8),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _recipientsLabel(List<SharedWith> users) {
+    if (users.isEmpty) return 'Shared';
+    if (users.length == 1) return 'With ${users.first.fullName}';
+    return 'With ${users.length} people';
+  }
+
+  Widget _buildFolderGridCard(FolderElement item) {
+    return _gridCard(
+      icon: Icons.folder,
+      color: Colors.amber.shade700,
+      name: item.folder.name,
+      subtitle: _recipientsLabel(item.sharedWithAll),
+      isRevoked: item.share.isRevoked,
+      onTap: item.share.isRevoked ? null : () => _openFolder(item),
+      onRevoke: () => _revokeShare(
+        _grantFor(item.share, ShareEntityType.folder),
+        item.folder.name,
+      ),
+    );
+  }
+
+  Widget _buildDocumentGridCard(DocumentElement item, int index) {
+    return _gridCard(
+      icon: _mimeIcon(item.document.mimeType),
+      color: _mimeColor(item.document.mimeType),
+      name: item.document.name,
+      subtitle: _recipientsLabel(item.sharedWithAll),
+      isRevoked: item.share.isRevoked,
+      onTap: () => _showDocumentDetails(item, index),
+      onRevoke: () => _revokeShare(
+        _grantFor(item.share, ShareEntityType.document),
+        item.document.name,
+      ),
+    );
   }
 
   // ── Revoke ───────────────────────────────────────────────────────────────────
@@ -259,7 +506,7 @@ class _SharedByMeScreenState extends State<SharedByMeScreen> {
 
   Widget _buildSectionHeader(String title, int count, IconData icon) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+      padding: EdgeInsets.zero,
       child: Row(
         children: [
           Icon(icon, size: 18, color: Colors.indigo),
@@ -302,7 +549,7 @@ class _SharedByMeScreenState extends State<SharedByMeScreen> {
     final recipientNames = item.sharedWithAll.map((u) => u.fullName).join(', ');
 
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      margin: const EdgeInsets.symmetric(vertical: 4),
       elevation: 0.5,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: ListTile(
@@ -404,7 +651,7 @@ class _SharedByMeScreenState extends State<SharedByMeScreen> {
       onTap: () => setState(
           () => _expandedStates[uniqueKey] = !isExpanded),
       child: Card(
-        margin: EdgeInsets.symmetric(horizontal: r.p(16), vertical: r.p(8)),
+        margin: EdgeInsets.symmetric(vertical: r.p(5)),
         elevation: 0.5,
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(r.p(12))),
@@ -779,22 +1026,23 @@ class _SharedByMeScreenState extends State<SharedByMeScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            _searchController.text.isEmpty
-                ? Icons.share_outlined
-                : Icons.search_off,
-            size: r.sp(80),
-            color: Colors.grey.shade400,
-          ),
+          if (_searchController.text.isEmpty)
+            ShareEmptyIllustration(size: r.sp(64))
+          else
+            Icon(
+              Icons.search_off,
+              size: r.sp(58),
+              color: const Color(0xFF0866E9),
+            ),
           SizedBox(height: r.p(20)),
           Text(
             _searchController.text.isEmpty
-                ? (_hasError ? 'Unable to Load Data' : 'Nothing Shared Yet')
+                ? (_hasError ? 'Unable to Load Data' : 'No Documents Sent Yet')
                 : 'No Results Found',
             style: TextStyle(
               fontSize: r.sp(20),
               fontWeight: FontWeight.bold,
-              color: Colors.grey,
+              color: Colors.black87,
             ),
           ),
           SizedBox(height: r.p(10)),
@@ -804,7 +1052,7 @@ class _SharedByMeScreenState extends State<SharedByMeScreen> {
               _hasError
                   ? _errorMessage
                   : _searchController.text.isEmpty
-                      ? 'Documents and folders you share with others will appear here.'
+                      ? 'Files and folders you share with authorised users will appear here.'
                       : 'No results found for "${_searchController.text}"',
               style:
                   TextStyle(fontSize: r.sp(14), color: Colors.grey.shade600),
@@ -847,66 +1095,96 @@ class _SharedByMeScreenState extends State<SharedByMeScreen> {
 
     return DismissKeyboard(
       child: Scaffold(
+        backgroundColor: const Color(0xFFF4F9FF),
         body: ResponsivePage(
           padding: EdgeInsets.zero,
           child: Column(
             children: [
-              // ── Search bar (identical to shared_files_screen) ─────────
-              Container(
-                padding: EdgeInsets.all(r.p(16)),
+              // ── Title (matches Shared with me) ────────────────────────
+              Padding(
+                padding: EdgeInsets.fromLTRB(r.p(20), r.p(12), r.p(20), 0),
+                child: const Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'DELEGATED ACCESS',
+                            style: TextStyle(
+                              color: Color(0xFF6D82A1),
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1.1,
+                            ),
+                          ),
+                          SizedBox(height: 3),
+                          Text(
+                            'My Shared Workspace',
+                            style: TextStyle(
+                              color: Color(0xFF202A4A),
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Text(
+                      'Access managed',
+                      style: TextStyle(
+                        color: Color(0xFF94A3B8),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // ── Search bar + layout toggle (matches Shared with me) ───
+              Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: r.p(16),
+                  vertical: r.p(10),
+                ),
                 child: Column(
                   children: [
                     Row(
                       children: [
                         Expanded(
-                          child: Container(
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(r.p(12)),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.grey.withAlpha(10),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: TextField(
-                              controller: _searchController,
-                              onChanged: _filter,
-                              maxLines: 1,
-                              decoration: InputDecoration(
-                                hintText:
-                                    'Search files, folders, recipients...',
-                                hintStyle: TextStyle(
-                                    color: Colors.grey.shade600),
-                                prefixIcon: const Icon(
-                                  Icons.search,
-                                  color: Colors.indigo,
-                                ),
-                                suffixIcon:
-                                    _searchController.text.isNotEmpty
-                                        ? IconButton(
-                                            icon: const Icon(Icons.clear),
-                                            color: Colors.grey,
-                                            onPressed: _clearSearch,
-                                          )
-                                        : null,
-                                filled: true,
-                                fillColor: Colors.white,
-                                border: OutlineInputBorder(
-                                  borderRadius:
-                                      BorderRadius.circular(r.p(12)),
-                                  borderSide: BorderSide.none,
-                                ),
-                                contentPadding: EdgeInsets.symmetric(
-                                  vertical: r.p(14),
-                                  horizontal: r.p(16),
-                                ),
-                              ),
+                          child: PillSearchField(
+                            controller: _searchController,
+                            hint: 'Search shared workspace...',
+                            onChanged: _filter,
+                            onSubmitted: _filter,
+                            onClear: _clearSearch,
+                            loading: _aiSearching,
+                            trailing: AiSparkleButton(
+                              onTap: () {
+                                final query = _searchController.text.trim();
+                                if (query.isEmpty) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Enter a search query first.',
+                                      ),
+                                    ),
+                                  );
+                                  return;
+                                }
+                                FocusScope.of(context).unfocus();
+                                _runAiSearch(query);
+                              },
                             ),
                           ),
                         ),
-                        SizedBox(width: r.p(12)),
+                        SizedBox(width: r.p(10)),
+                        LayoutCapsule(
+                          value: _viewMode,
+                          onChanged: (mode) =>
+                              setState(() => _viewMode = mode),
+                        ),
                       ],
                     ),
                     SizedBox(height: r.p(8)),
@@ -960,37 +1238,61 @@ class _SharedByMeScreenState extends State<SharedByMeScreen> {
                         // ── Folders section ───────────────────────────
                         if (_filteredFolders.isNotEmpty) ...[
                           SliverToBoxAdapter(
-                            child: _buildSectionHeader(
-                              'Folders',
-                              _filteredFolders.length,
-                              Icons.folder_open,
-                            ),
-                          ),
-                          SliverList(
-                            delegate: SliverChildBuilderDelegate(
-                              (context, index) =>
-                                  _buildFolderCard(_filteredFolders[index]),
-                              childCount: _filteredFolders.length,
+                            child: SectionPanel(
+                              margin: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                              ),
+                              header: _buildSectionHeader(
+                                'Folders',
+                                _filteredFolders.length,
+                                Icons.folder_open,
+                              ),
+                              child: _viewMode == AppViewMode.list
+                                  ? Column(
+                                      children: [
+                                        for (final folder in _filteredFolders)
+                                          _buildFolderCard(folder),
+                                      ],
+                                    )
+                                  : _buildGrid([
+                                      for (final folder in _filteredFolders)
+                                        _buildFolderGridCard(folder),
+                                    ]),
                             ),
                           ),
                           const SliverToBoxAdapter(
-                              child: SizedBox(height: 8)),
+                              child: SizedBox(height: 14)),
                         ],
 
                         // ── Files section ─────────────────────────────
                         if (_filteredDocuments.isNotEmpty) ...[
                           SliverToBoxAdapter(
-                            child: _buildSectionHeader(
-                              'Files',
-                              _filteredDocuments.length,
-                              Icons.file_copy_outlined,
-                            ),
-                          ),
-                          SliverList(
-                            delegate: SliverChildBuilderDelegate(
-                              (context, index) => _buildDocumentCard(
-                                  _filteredDocuments[index], index),
-                              childCount: _filteredDocuments.length,
+                            child: SectionPanel(
+                              margin: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                              ),
+                              header: _buildSectionHeader(
+                                'Files',
+                                _filteredDocuments.length,
+                                Icons.file_copy_outlined,
+                              ),
+                              child: _viewMode == AppViewMode.list
+                                  ? Column(
+                                      children: [
+                                        for (int i = 0;
+                                            i < _filteredDocuments.length;
+                                            i++)
+                                          _buildDocumentCard(
+                                              _filteredDocuments[i], i),
+                                      ],
+                                    )
+                                  : _buildGrid([
+                                      for (int i = 0;
+                                          i < _filteredDocuments.length;
+                                          i++)
+                                        _buildDocumentGridCard(
+                                            _filteredDocuments[i], i),
+                                    ]),
                             ),
                           ),
                         ],

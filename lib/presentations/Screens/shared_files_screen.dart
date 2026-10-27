@@ -2,7 +2,12 @@ import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
 import 'package:digi_sanchika/presentations/Screens/shared_folder_screen.dart';
+import 'package:digi_sanchika/widgets/file_type_icon.dart';
+import 'package:digi_sanchika/widgets/folder_illustration.dart';
+import 'package:digi_sanchika/widgets/folder_tile.dart';
 import 'package:digi_sanchika/utils/app_fonts.dart';
+import 'package:digi_sanchika/widgets/favorite_menu.dart';
+import 'package:digi_sanchika/widgets/section_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:digi_sanchika/utils/responsive_helper.dart';
 import 'package:digi_sanchika/models/document.dart';
@@ -19,12 +24,18 @@ import 'package:digi_sanchika/services/shared_folders_service.dart';
 import 'package:digi_sanchika/services/download_requests_service.dart';
 import 'package:digi_sanchika/widgets/share_access_sheet.dart';
 import 'package:digi_sanchika/services/download_access_service.dart';
+import 'package:digi_sanchika/services/folder_download_service.dart';
 import 'package:digi_sanchika/services/shared_browse_service.dart';
 import 'package:digi_sanchika/models/app_view_mode.dart';
-import 'package:digi_sanchika/widgets/view_mode_popup_button.dart';
+import 'package:digi_sanchika/widgets/layout_capsule.dart';
+import 'package:digi_sanchika/widgets/home_components.dart';
+import 'package:digi_sanchika/widgets/ai_sparkle_button.dart';
+import 'package:digi_sanchika/widgets/share_empty_illustration.dart';
+import 'package:digi_sanchika/services/my_documents_service.dart';
 import 'package:digi_sanchika/widgets/download_feedback.dart';
 import 'package:digi_sanchika/widgets/version_history_dialog.dart';
 import 'package:digi_sanchika/widgets/responsive_page.dart';
+import 'package:digi_sanchika/widgets/responsive_document_gallery.dart';
 
 class SharedMeScreen extends StatefulWidget {
   const SharedMeScreen({super.key});
@@ -45,6 +56,7 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
   // State variables
   List<Document> _sharedDocuments = [];
   List<Document> _filteredDocuments = [];
+  bool _aiSearching = false;
   List<SharedFolder> _sharedFolders = [];
   List<SharedFolder> _filteredFolders = [];
   bool _isLoading = true;
@@ -121,16 +133,19 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
     super.initState();
     _loadSharedData();
     print("shared data $_filteredDocuments");
-    _sharedFoldersService.fetchSharedFolders().then((folders) {
-      print('Fetched ${folders.length} shared folders:');
-      for (final folder in folders) {
-        print(
-          'Id: ${folder.id}, Name: ${folder.name}, Owner: ${folder.owner}, CreatedAt: ${folder.createdAt}, ExpiresAt: ${folder.expiresAt}, ItemCount: ${folder.itemCount}',
-        );
-      }
-    }).catchError((e) {
-      print('Error fetching shared folders: $e');
-    });
+    _sharedFoldersService
+        .fetchSharedFolders()
+        .then((folders) {
+          print('Fetched ${folders.length} shared folders:');
+          for (final folder in folders) {
+            print(
+              'Id: ${folder.id}, Name: ${folder.name}, Owner: ${folder.owner}, CreatedAt: ${folder.createdAt}, ExpiresAt: ${folder.expiresAt}, ItemCount: ${folder.itemCount}',
+            );
+          }
+        })
+        .catchError((e) {
+          print('Error fetching shared folders: $e');
+        });
   }
 
   @override
@@ -284,19 +299,19 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
             (doc.name.toLowerCase().contains(lowercaseQuery) ||
                 (doc.owner.isNotEmpty &&
                     doc.owner.toLowerCase().contains(lowercaseQuery)) ||
-                ((doc.sharedViaGroupName ?? '')
-                    .toLowerCase()
-                    .contains(lowercaseQuery)) ||
-                ((doc.sharedByName ?? '')
-                    .toLowerCase()
-                    .contains(lowercaseQuery)) ||
+                ((doc.sharedViaGroupName ?? '').toLowerCase().contains(
+                  lowercaseQuery,
+                )) ||
+                ((doc.sharedByName ?? '').toLowerCase().contains(
+                  lowercaseQuery,
+                )) ||
                 (doc.keyword.isNotEmpty &&
                     doc.keyword.toLowerCase().contains(lowercaseQuery)) ||
                 doc.type.toLowerCase().contains(lowercaseQuery) ||
                 (doc.classification.isNotEmpty &&
-                    doc.classification
-                        .toLowerCase()
-                        .contains(lowercaseQuery)) ||
+                    doc.classification.toLowerCase().contains(
+                      lowercaseQuery,
+                    )) ||
                 (doc.details.isNotEmpty &&
                     doc.details.toLowerCase().contains(lowercaseQuery)) ||
                 (doc.folder.isNotEmpty &&
@@ -313,6 +328,53 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
               folder.owner.toLowerCase().contains(lowercaseQuery);
         }).toList();
       }
+    });
+  }
+
+  /// AI assistant search over documents shared with me
+  /// (POST /search/semantic, scope `shared`). Results keep server relevance
+  /// order; folders still match by name.
+  Future<void> _runAiSearch(String query) async {
+    setState(() => _aiSearching = true);
+    final result = await MyDocumentsService.semanticSearch(
+      query: query,
+      scope: 'shared',
+      limit: 50,
+    );
+    if (!mounted) return;
+    setState(() => _aiSearching = false);
+    final results = result['results'];
+    if (result['success'] != true || results is! List) {
+      _filterDocuments(searchQuery: query);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${result['error'] ?? 'AI search failed'}. Showing name matches.',
+          ),
+        ),
+      );
+      return;
+    }
+    final ids = results.map((r) => r['documentId'].toString()).toList();
+    final type = _selectedFileType;
+    final lowercaseQuery = query.toLowerCase();
+    setState(() {
+      _filteredDocuments =
+          _sharedDocuments
+              .where(
+                (doc) =>
+                    ids.contains(doc.id) &&
+                    (type == 'All' || doc.type.toUpperCase() == type),
+              )
+              .toList()
+            ..sort((a, b) => ids.indexOf(a.id).compareTo(ids.indexOf(b.id)));
+      _filteredFolders = _sharedFolders
+          .where(
+            (folder) =>
+                folder.name.toLowerCase().contains(lowercaseQuery) ||
+                folder.owner.toLowerCase().contains(lowercaseQuery),
+          )
+          .toList();
     });
   }
 
@@ -563,9 +625,15 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
           return AlertDialog(
             title: Row(
               children: [
-                Icon(_getFileIcon('py'), size: r.sp(24), color: _getFileColor('py')),
+                Icon(
+                  _getFileIcon('py'),
+                  size: r.sp(24),
+                  color: _getFileColor('py'),
+                ),
                 SizedBox(width: r.p(12)),
-                Expanded(child: Text(filename, overflow: TextOverflow.ellipsis)),
+                Expanded(
+                  child: Text(filename, overflow: TextOverflow.ellipsis),
+                ),
               ],
             ),
             content: SizedBox(
@@ -643,12 +711,76 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
     _documentOpener.openPreviewDialog(context: context, document: document);
   }
 
-  void _showDocumentActions(Document document) {
+  Future<void> _showDocumentActions(
+    Document document,
+    BuildContext anchorContext,
+  ) async {
+    final action = await showMenu<String>(
+      context: anchorContext,
+      position: _menuPosition(anchorContext),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      items: [
+        const PopupMenuItem(
+          value: 'properties',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.info_outline, color: Colors.blue),
+            title: Text('Properties'),
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'share',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.share, color: Colors.blue),
+            title: Text('Share'),
+          ),
+        ),
+        favoriteMenuItem(document.id),
+      ],
+    );
+    if (!mounted) return;
+    if (action == 'properties') {
+      await _showDocumentDetails(document);
+    } else if (action == 'share') {
+      await _showShareDialog(document);
+    } else if (action == favoriteMenuValue) {
+      await toggleFavoriteWithFeedback(context, document.id);
+    }
+  }
+
+  RelativeRect _menuPosition(BuildContext anchorContext) {
+    final button = anchorContext.findRenderObject() as RenderBox;
+    final overlay =
+        Overlay.of(anchorContext).context.findRenderObject() as RenderBox;
+    final rect =
+        button.localToGlobal(Offset.zero, ancestor: overlay) & button.size;
+    return RelativeRect.fromRect(rect, Offset.zero & overlay.size);
+  }
+
+  RelativeRect _menuPositionBelow(BuildContext anchorContext) {
+    final button = anchorContext.findRenderObject() as RenderBox;
+    final overlay =
+        Overlay.of(anchorContext).context.findRenderObject() as RenderBox;
+    final rect =
+        button.localToGlobal(Offset.zero, ancestor: overlay) & button.size;
+    final bottomGap = overlay.size.height - rect.bottom - 4;
+    return RelativeRect.fromLTRB(
+      rect.left,
+      rect.bottom + 4,
+      overlay.size.width - rect.right,
+      bottomGap < 0 ? 0 : bottomGap,
+    );
+  }
+
+  void _showDocumentActionsBottomSheet(Document document) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(context.r.p(16))),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(context.r.p(16)),
+        ),
       ),
       builder: (context) {
         final r = context.r;
@@ -770,7 +902,11 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
                     data['original_filename']?.toString() ?? document.name,
                     r: r,
                   ),
-                  _buildDetailRow('File Type', document.type.toUpperCase(), r: r),
+                  _buildDetailRow(
+                    'File Type',
+                    document.type.toUpperCase(),
+                    r: r,
+                  ),
                   _buildDetailRow(
                     'Size',
                     '${data['file_size']?.toString() ?? '0'} bytes',
@@ -917,7 +1053,10 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
             width: r?.p(120) ?? 120,
             child: Text(
               '$label: ',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: r?.sp(14) ?? 14),
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: r?.sp(14) ?? 14,
+              ),
             ),
           ),
           Expanded(
@@ -947,10 +1086,7 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
           SizedBox(width: r?.p(12) ?? 12),
           SizedBox(
             width: r?.p(100) ?? 100,
-            child: Text(
-              label,
-              style: w400_14Poppins(color: Colors.black87),
-            ),
+            child: Text(label, style: w400_14Poppins(color: Colors.black87)),
           ),
           SizedBox(width: r?.p(8) ?? 8),
           Expanded(
@@ -969,9 +1105,7 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
   // ============ EXPIRY HELPERS ============
 
   String _getExpiryText(String? expiryDate) {
-    if (expiryDate == null ||
-        expiryDate.isEmpty ||
-        expiryDate == 'No Expiry') {
+    if (expiryDate == null || expiryDate.isEmpty || expiryDate == 'No Expiry') {
       return 'No Expiry';
     }
 
@@ -998,9 +1132,7 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
   }
 
   Color _getExpiryColor(String? expiryDate) {
-    if (expiryDate == null ||
-        expiryDate.isEmpty ||
-        expiryDate == 'No Expiry') {
+    if (expiryDate == null || expiryDate.isEmpty || expiryDate == 'No Expiry') {
       return Colors.grey;
     }
 
@@ -1022,7 +1154,11 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
 
   // ============ DOCUMENT CARD ============
 
-  Widget _buildDocumentCard(BuildContext context, Document document, int index) {
+  Widget _buildDocumentCard(
+    BuildContext context,
+    Document document,
+    int index,
+  ) {
     final r = context.r;
     final iconData = _getFileIcon(document.type);
     final color = _getFileColor(document.type);
@@ -1037,7 +1173,9 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
       child: Card(
         margin: EdgeInsets.symmetric(horizontal: r.p(16), vertical: r.p(8)),
         elevation: 0.5,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(r.p(12))),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(r.p(12)),
+        ),
         child: Padding(
           padding: EdgeInsets.all(r.p(16)),
           child: Column(
@@ -1052,7 +1190,11 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
                       color: color.withAlpha(10),
                       borderRadius: BorderRadius.circular(r.p(8)),
                     ),
-                    child: Icon(iconData, color: color, size: r.sp(32)),
+                    child: FileTypeIcon.orElse(
+                      document.type,
+                      r.sp(32),
+                      Icon(iconData, color: color, size: r.sp(32)),
+                    ),
                   ),
                   width10,
                   Expanded(
@@ -1076,7 +1218,9 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
                                   ),
                                   Text(
                                     'Type: ${document.type} • $formattedDate',
-                                    style: w400_14Poppins(color: Colors.grey.shade700),
+                                    style: w400_14Poppins(
+                                      color: Colors.grey.shade700,
+                                    ),
                                   ),
                                 ],
                               ),
@@ -1122,7 +1266,8 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
                             SizedBox(width: r.p(4)),
                             // More Options Button
                             IconButton(
-                              onPressed: () => _showDocumentActions(document),
+                              onPressed: () =>
+                                  _showDocumentActions(document, context),
                               icon: Container(
                                 width: r.p(36),
                                 height: r.p(36),
@@ -1174,8 +1319,8 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
                                 document.sharedViaGroupName!.trim().isNotEmpty)
                             ? document.sharedViaGroupName!.trim()
                             : (document.sharedByName?.trim().isNotEmpty == true
-                                ? document.sharedByName!.trim()
-                                : document.owner),
+                                  ? document.sharedByName!.trim()
+                                  : document.owner),
                         (document.sharedViaGroupName != null &&
                                 document.sharedViaGroupName!.trim().isNotEmpty)
                             ? Icons.groups_rounded
@@ -1197,7 +1342,11 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(Icons.schedule, size: r.sp(16), color: Colors.grey.shade600),
+                          Icon(
+                            Icons.schedule,
+                            size: r.sp(16),
+                            color: Colors.grey.shade600,
+                          ),
                           SizedBox(width: r.p(12)),
                           SizedBox(
                             width: r.p(100),
@@ -1211,7 +1360,8 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
                             child: Text(
                               _getExpiryText(document.expiresAt),
                               style: w400_14Poppins(
-                                  color: _getExpiryColor(document.expiresAt)),
+                                color: _getExpiryColor(document.expiresAt),
+                              ),
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -1231,13 +1381,16 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
                         children: [
                           Expanded(
                             child: OutlinedButton.icon(
-                              onPressed: () => _handleDocumentDoubleTap(document),
+                              onPressed: () =>
+                                  _handleDocumentDoubleTap(document),
                               icon: Icon(Icons.visibility, size: r.sp(18)),
                               label: const Text('View'),
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: Colors.purple,
                                 side: const BorderSide(color: Colors.purple),
-                                padding: EdgeInsets.symmetric(vertical: r.p(10)),
+                                padding: EdgeInsets.symmetric(
+                                  vertical: r.p(10),
+                                ),
                               ),
                             ),
                           ),
@@ -1250,7 +1403,9 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: Colors.blue,
                                 side: const BorderSide(color: Colors.blue),
-                                padding: EdgeInsets.symmetric(vertical: r.p(10)),
+                                padding: EdgeInsets.symmetric(
+                                  vertical: r.p(10),
+                                ),
                               ),
                             ),
                           ),
@@ -1270,14 +1425,30 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
   // ============ LAYOUT MODES ============
 
   Widget _buildLayoutSelector() {
-    return ViewModePopupButton(
+    return LayoutCapsule(
       value: _currentViewMode,
-      onSelected: (mode) => setState(() => _currentViewMode = mode),
+      onChanged: (mode) => setState(() => _currentViewMode = mode),
     );
   }
 
   Widget _buildDocumentsContent(List<Document> documents) {
-    switch (_currentViewMode) {
+    final mode = switch (_currentViewMode) {
+      AppViewMode.grid2x2 => ResponsiveDocumentViewMode.grid2,
+      AppViewMode.grid3x3 => ResponsiveDocumentViewMode.grid3,
+      _ => ResponsiveDocumentViewMode.list,
+    };
+    return ResponsiveDocumentGallery(
+      documents: documents,
+      mode: mode,
+      shrinkWrap: true,
+      onView: _handleDocumentDoubleTap,
+      onOverflow: (document, anchorContext, _) =>
+          _showDocumentActions(document, anchorContext),
+      onVersions: _showDocumentVersions,
+      onDownload: _downloadDocument,
+      onShare: _showShareDialog,
+    );
+    /* switch (_currentViewMode) {
       case AppViewMode.list:
         return ListView.builder(
           shrinkWrap: true,
@@ -1345,18 +1516,25 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
             return _buildDocumentDetailedItem(context, documents[index], index);
           },
         );
-    }
+    } */
   }
 
   // Grid view item
-  Widget _buildDocumentGridItem(BuildContext context, Document document, int index, int columns) {
+  Widget _buildDocumentGridItem(
+    BuildContext context,
+    Document document,
+    int index,
+    int columns,
+  ) {
     final r = context.r;
     final iconData = _getFileIcon(document.type);
     final color = _getFileColor(document.type);
 
     return Card(
       elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(r.p(12))),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(r.p(12)),
+      ),
       child: InkWell(
         onTap: () => _handleDocumentDoubleTap(document),
         borderRadius: BorderRadius.circular(r.p(12)),
@@ -1372,10 +1550,14 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
                   color: color.withAlpha(20),
                   borderRadius: BorderRadius.circular(r.p(12)),
                 ),
-                child: Icon(
-                  iconData,
-                  color: color,
-                  size: columns == 2 ? r.sp(26) : r.sp(18),
+                child: FileTypeIcon.orElse(
+                  document.type,
+                  columns == 2 ? r.sp(26) : r.sp(18),
+                  Icon(
+                    iconData,
+                    color: color,
+                    size: columns == 2 ? r.sp(26) : r.sp(18),
+                  ),
                 ),
               ),
               SizedBox(height: r.p(6)),
@@ -1403,7 +1585,10 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
                 SizedBox(height: r.p(2)),
                 Text(
                   _formatDateDDMMYYYY(document.uploadDate),
-                  style: TextStyle(fontSize: r.sp(8), color: Colors.grey.shade500),
+                  style: TextStyle(
+                    fontSize: r.sp(8),
+                    color: Colors.grey.shade500,
+                  ),
                 ),
               ],
             ],
@@ -1414,7 +1599,11 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
   }
 
   // Compact view item
-  Widget _buildDocumentCompactItem(BuildContext context, Document document, int index) {
+  Widget _buildDocumentCompactItem(
+    BuildContext context,
+    Document document,
+    int index,
+  ) {
     final r = context.r;
 
     return Container(
@@ -1450,7 +1639,10 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
                 SizedBox(width: r.p(8)),
                 Text(
                   _formatDateDDMMYYYY(document.uploadDate),
-                  style: TextStyle(fontSize: r.sp(11), color: Colors.grey.shade600),
+                  style: TextStyle(
+                    fontSize: r.sp(11),
+                    color: Colors.grey.shade600,
+                  ),
                 ),
               ],
             ),
@@ -1461,7 +1653,11 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
   }
 
   // Detailed view item
-  Widget _buildDocumentDetailedItem(BuildContext context, Document document, int index) {
+  Widget _buildDocumentDetailedItem(
+    BuildContext context,
+    Document document,
+    int index,
+  ) {
     final r = context.r;
     final iconData = _getFileIcon(document.type);
     final color = _getFileColor(document.type);
@@ -1469,7 +1665,9 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
     return Card(
       elevation: 2,
       margin: EdgeInsets.only(bottom: r.p(8)),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(r.p(12))),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(r.p(12)),
+      ),
       child: InkWell(
         onTap: () => _handleDocumentDoubleTap(document),
         borderRadius: BorderRadius.circular(r.p(12)),
@@ -1488,7 +1686,11 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
                       color: color.withAlpha(20),
                       borderRadius: BorderRadius.circular(r.p(10)),
                     ),
-                    child: Icon(iconData, color: color, size: r.sp(24)),
+                    child: FileTypeIcon.orElse(
+                      document.type,
+                      r.sp(24),
+                      Icon(iconData, color: color, size: r.sp(24)),
+                    ),
                   ),
                   SizedBox(width: r.p(12)),
                   Expanded(
@@ -1513,7 +1715,11 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
                             Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.person, size: r.sp(12), color: Colors.grey),
+                                Icon(
+                                  Icons.person,
+                                  size: r.sp(12),
+                                  color: Colors.grey,
+                                ),
                                 SizedBox(width: r.p(4)),
                                 Flexible(
                                   child: Text(
@@ -1530,7 +1736,11 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
                             Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.folder, size: r.sp(12), color: Colors.grey),
+                                Icon(
+                                  Icons.folder,
+                                  size: r.sp(12),
+                                  color: Colors.grey,
+                                ),
                                 SizedBox(width: r.p(4)),
                                 Flexible(
                                   child: Text(
@@ -1554,7 +1764,11 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
                             Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.calendar_today, size: r.sp(12), color: Colors.grey),
+                                Icon(
+                                  Icons.calendar_today,
+                                  size: r.sp(12),
+                                  color: Colors.grey,
+                                ),
                                 SizedBox(width: r.p(4)),
                                 Text(
                                   _formatDateDDMMYYYY(document.uploadDate),
@@ -1568,7 +1782,11 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
                             Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.security, size: r.sp(12), color: Colors.grey),
+                                Icon(
+                                  Icons.security,
+                                  size: r.sp(12),
+                                  color: Colors.grey,
+                                ),
                                 SizedBox(width: r.p(4)),
                                 Text(
                                   document.classification,
@@ -1585,7 +1803,7 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
                     ),
                   ),
                   IconButton(
-                    onPressed: () => _showDocumentActions(document),
+                    onPressed: () => _showDocumentActions(document, context),
                     icon: Container(
                       width: r.p(32),
                       height: r.p(32),
@@ -1609,10 +1827,17 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: () => _handleDocumentDoubleTap(document),
-                      icon: Icon(Icons.visibility, size: r.sp(14), color: Colors.purple),
+                      icon: Icon(
+                        Icons.visibility,
+                        size: r.sp(14),
+                        color: Colors.purple,
+                      ),
                       label: Text(
                         'View',
-                        style: TextStyle(fontSize: r.sp(12), color: Colors.purple),
+                        style: TextStyle(
+                          fontSize: r.sp(12),
+                          color: Colors.purple,
+                        ),
                       ),
                       style: OutlinedButton.styleFrom(
                         side: const BorderSide(color: Colors.purple),
@@ -1624,10 +1849,17 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: () => _showDocumentVersions(document),
-                      icon: Icon(Icons.history, size: r.sp(14), color: Colors.blue),
+                      icon: Icon(
+                        Icons.history,
+                        size: r.sp(14),
+                        color: Colors.blue,
+                      ),
                       label: Text(
                         'Versions',
-                        style: TextStyle(fontSize: r.sp(12), color: Colors.blue),
+                        style: TextStyle(
+                          fontSize: r.sp(12),
+                          color: Colors.blue,
+                        ),
                       ),
                       style: OutlinedButton.styleFrom(
                         side: const BorderSide(color: Colors.blue),
@@ -1640,10 +1872,17 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
                     child: document.allowDownload
                         ? OutlinedButton.icon(
                             onPressed: () => _downloadDocument(document),
-                            icon: Icon(Icons.download, size: r.sp(14), color: Colors.green),
+                            icon: Icon(
+                              Icons.download,
+                              size: r.sp(14),
+                              color: Colors.green,
+                            ),
                             label: Text(
                               'Download',
-                              style: TextStyle(fontSize: r.sp(12), color: Colors.green),
+                              style: TextStyle(
+                                fontSize: r.sp(12),
+                                color: Colors.green,
+                              ),
                             ),
                             style: OutlinedButton.styleFrom(
                               side: const BorderSide(color: Colors.green),
@@ -1718,7 +1957,11 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
                 _filterDocuments(fileType: 'All');
               });
             },
-            child: Icon(Icons.close, size: r.sp(14), color: Colors.blue.shade800),
+            child: Icon(
+              Icons.close,
+              size: r.sp(14),
+              color: Colors.blue.shade800,
+            ),
           ),
         ],
       ),
@@ -1731,7 +1974,11 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
       builder: (context) {
         final r = context.r;
         return AlertDialog(
-          icon: Icon(Icons.download_outlined, size: r.sp(48), color: Colors.blue),
+          icon: Icon(
+            Icons.download_outlined,
+            size: r.sp(48),
+            color: Colors.blue,
+          ),
           title: const Text('Download Document'),
           content: const Text(
             'For security purposes, library documents require approval for downloading. '
@@ -1762,8 +2009,9 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
                           ? 'Download request submitted'
                           : (result['message'] ?? 'Request failed'),
                     ),
-                    backgroundColor:
-                        result['success'] == true ? Colors.green : Colors.red,
+                    backgroundColor: result['success'] == true
+                        ? Colors.green
+                        : Colors.red,
                   ),
                 );
               },
@@ -1777,9 +2025,35 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
 
   // ============ SECTION HEADER ============
 
+  /// Shared folders as a list or 2x2 / 3x3 grid, sized to fit a panel.
+  Widget _buildFolderSectionBody() {
+    if (_currentViewMode == AppViewMode.list) {
+      return Column(
+        children: [
+          for (final folder in _filteredFolders) _buildFolderCard(folder),
+        ],
+      );
+    }
+    final isThreeColumn = _currentViewMode == AppViewMode.grid3x3;
+    return GridView.builder(
+      shrinkWrap: true,
+      padding: EdgeInsets.zero,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: _filteredFolders.length,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: isThreeColumn ? 3 : 2,
+        crossAxisSpacing: isThreeColumn ? 8 : 12,
+        mainAxisSpacing: 12,
+        childAspectRatio: isThreeColumn ? 0.88 : 1.08,
+      ),
+      itemBuilder: (context, index) =>
+          _buildSharedFolderGridCard(_filteredFolders[index]),
+    );
+  }
+
   Widget _buildSectionHeader(String title, int count, IconData icon) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+      padding: EdgeInsets.zero,
       child: Row(
         children: [
           Icon(icon, size: 18, color: Colors.indigo),
@@ -1815,42 +2089,242 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
 
   // ============ FOLDER CARD ============
 
-  Widget _buildFolderCard(SharedFolder folder) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      elevation: 0.5,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: ListTile(
-        leading: const Icon(Icons.folder, color: Colors.amber, size: 32),
-        title: Text(
-          folder.name,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+  Future<void> _showFolderActions(
+    SharedFolder folder,
+    BuildContext anchorContext,
+  ) async {
+    final action = await showMenu<String>(
+      context: anchorContext,
+      position: _menuPositionBelow(anchorContext),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      items: const [
+        PopupMenuItem(
+          value: 'details',
+          height: 46,
+          child: Row(
+            children: [
+              Icon(Icons.info_outline_rounded, color: Color(0xFF2563EB)),
+              SizedBox(width: 10),
+              Text('Folder Details'),
+            ],
+          ),
         ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        PopupMenuItem(
+          value: 'download',
+          height: 46,
+          child: Row(
+            children: [
+              Icon(Icons.archive_outlined, color: Color(0xFF2563EB)),
+              SizedBox(width: 10),
+              Text('Download as ZIP'),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: 'share',
+          height: 46,
+          child: Row(
+            children: [
+              Icon(Icons.share_outlined, color: Color(0xFF2563EB)),
+              SizedBox(width: 10),
+              Text('Share Folder'),
+            ],
+          ),
+        ),
+      ],
+    );
+
+    if (!mounted) return;
+    switch (action) {
+      case 'details':
+        await _showFolderDetails(folder);
+        break;
+      case 'download':
+        await _downloadSharedFolder(folder);
+        break;
+      case 'share':
+        await _shareFolder(folder);
+        break;
+    }
+  }
+
+  Future<void> _showFolderDetails(SharedFolder folder) async {
+    _showSnackBar('Loading folder details...', Colors.blue);
+    final result = await _sharedFoldersService.getSharedFolderContents(
+      folder.id,
+    );
+    if (!mounted) return;
+
+    if (result['success'] != true) {
+      _showSnackBar(
+        result['error']?.toString() ?? 'Failed to load folder details',
+        Colors.red,
+      );
+      return;
+    }
+
+    final folderData = result['folder'] is Map
+        ? Map<String, dynamic>.from(result['folder'] as Map)
+        : <String, dynamic>{};
+    final shareData = result['share'] is Map
+        ? Map<String, dynamic>.from(result['share'] as Map)
+        : <String, dynamic>{};
+    final documents = result['documents'] is List
+        ? (result['documents'] as List)
+        : const [];
+    final subfolders = result['folders'] is List
+        ? (result['folders'] as List)
+        : const [];
+    final fileCount = folder.itemCount >= 0
+        ? folder.itemCount
+        : documents.length;
+    final lastModified =
+        folderData['updated_at'] ??
+        folderData['modified_at'] ??
+        folderData['last_modified'];
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Row(
           children: [
-            Text('Owner: ${folder.owner}'),
-            Text('Created: ${folder.createdAt}'),
-            if (folder.itemCount >= 0)
-              Text('${folder.itemCount} item${folder.itemCount == 1 ? '' : 's'}'),
-            RichText(
-              text: TextSpan(
-                text: 'Expires: ',
-                style: const TextStyle(fontSize: 13, color: Colors.black87),
-                children: [
-                  TextSpan(
-                    text: _getExpiryText(folder.expiresAt),
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: _getExpiryColor(folder.expiresAt),
-                    ),
-                  ),
-                ],
+            const Icon(Icons.folder_rounded, color: Color(0xFF2583EA)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                folder.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ],
         ),
-        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildDetailRow('Owner', folder.owner),
+              _buildDetailRow('Created', folder.createdAt),
+              if (lastModified != null)
+                _buildDetailRow(
+                  'Last Modified',
+                  _formatDateDDMMYYYY(lastModified),
+                ),
+              _buildDetailRow('Files', '$fileCount'),
+              _buildDetailRow('Subfolders', '${subfolders.length}'),
+              _buildDetailRow(
+                'Download Access',
+                folder.canDownload ? 'Allowed' : 'Restricted',
+              ),
+              _buildDetailRow(
+                'Upload Access',
+                folder.canUpload ? 'Allowed' : 'Restricted',
+              ),
+              _buildDetailRow(
+                'Share Access',
+                folder.canShare ? 'Allowed' : 'Restricted',
+              ),
+              _buildDetailRow(
+                'Sharing Status',
+                shareData.isNotEmpty ? 'Shared with you' : 'Shared folder',
+              ),
+              _buildDetailRow('Expires', _getExpiryText(folder.expiresAt)),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _downloadSharedFolder(SharedFolder folder) async {
+    if (!ApiService.isConnected) {
+      _showSnackBar('Cannot download while offline', Colors.orange);
+      return;
+    }
+    if (!folder.canDownload) {
+      _showSnackBar(
+        'You do not have permission to download this folder',
+        Colors.orange,
+      );
+      return;
+    }
+
+    setState(() => _isDownloading = true);
+    try {
+      final result = await FolderDownloadService()
+          .downloadFolderAsZipWithAccess(
+            folderId: folder.id,
+            folderNameHint: folder.name,
+          );
+      if (result['requiresApproval'] == true) {
+        _showSnackBar(
+          result['requestCreated'] == true
+              ? 'Download request sent for approval'
+              : (result['message']?.toString() ?? 'Download approval required'),
+          Colors.orange,
+        );
+      } else if (result['success'] == true && result['filePath'] != null) {
+        await DownloadFeedback.showDownloadedDialog(
+          context,
+          filename: result['filename']?.toString() ?? '${folder.name}.zip',
+          filePath: result['filePath'].toString(),
+        );
+      } else {
+        _showSnackBar(
+          result['error']?.toString() ?? 'Folder download failed',
+          Colors.red,
+        );
+      }
+    } catch (error) {
+      _showSnackBar('Folder download failed: $error', Colors.red);
+    } finally {
+      if (mounted) setState(() => _isDownloading = false);
+    }
+  }
+
+  Future<void> _shareFolder(SharedFolder folder) async {
+    if (!ApiService.isConnected) {
+      _showSnackBar('Cannot share while offline', Colors.orange);
+      return;
+    }
+    if (!folder.canShare) {
+      _showSnackBar(
+        'You do not have permission to share this folder',
+        Colors.orange,
+      );
+      return;
+    }
+    await ShareAccessSheet.showForFolder(
+      context: context,
+      folderId: folder.id,
+      folderName: folder.name,
+    );
+  }
+
+  Widget _buildFolderCard(SharedFolder folder) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE1E7F0)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
         onTap: () {
           Navigator.push(
             context,
@@ -1863,6 +2337,156 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
             ),
           );
         },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEAF3FF),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const FolderIllustration(size: 36),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      folder.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF102A56),
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Owner: ${folder.owner}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.grey.shade600,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '${folder.itemCount < 0 ? 0 : folder.itemCount} items',
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Created: ${folder.createdAt}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.grey.shade600,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: RichText(
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            text: TextSpan(
+                              text: 'Expires: ',
+                              style: TextStyle(
+                                color: Colors.grey.shade600,
+                                fontSize: 13,
+                              ),
+                              children: [
+                                TextSpan(
+                                  text: _getExpiryText(folder.expiresAt),
+                                  style: TextStyle(
+                                    color: _getExpiryColor(folder.expiresAt),
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Builder(
+                builder: (buttonContext) => IconButton(
+                  tooltip: 'Folder actions',
+                  onPressed: () => _showFolderActions(folder, buttonContext),
+                  icon: const Icon(
+                    Icons.more_vert_rounded,
+                    color: Color(0xFF102A56),
+                    size: 26,
+                  ),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 36,
+                    minHeight: 36,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSharedFolderGridCard(SharedFolder folder) {
+    return FolderTile(
+      title: folder.name,
+      details: [
+        '${folder.itemCount < 0 ? 0 : folder.itemCount} items',
+        'Owner: ${folder.owner}',
+      ],
+      frontTop: 0.4,
+      tabWidth: 0.34,
+      titleSize: 15,
+      detailSize: 11.5,
+      titleLines: 2,
+      radius: BorderRadius.circular(20),
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => SharedFolderScreen(
+            folderId: folder.id,
+            folderName: folder.name,
+            userName: folder.owner,
+          ),
+        ),
+      ),
+      menu: Builder(
+        builder: (buttonContext) => IconButton(
+          tooltip: 'Folder actions',
+          onPressed: () => _showFolderActions(folder, buttonContext),
+          icon: const Icon(Icons.more_vert_rounded, color: Color(0xFF64748B)),
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+        ),
       ),
     );
   }
@@ -1874,22 +2498,25 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            _searchController.text.isEmpty
-                ? Icons.people_outline
-                : Icons.search_off,
-            size: r.sp(80),
-            color: Colors.grey.shade400,
-          ),
+          if (_searchController.text.isEmpty)
+            ShareEmptyIllustration(size: r.sp(64))
+          else
+            Icon(
+              Icons.search_off,
+              size: r.sp(58),
+              color: const Color(0xFF0866E9),
+            ),
           SizedBox(height: r.p(20)),
           Text(
             _searchController.text.isEmpty
-                ? (_hasError ? 'Unable to Load Data' : 'No Shared Items')
+                ? (_hasError
+                      ? 'Unable to Load Data'
+                      : 'No Documents Received Yet')
                 : 'No Results Found',
             style: TextStyle(
               fontSize: r.sp(20),
               fontWeight: FontWeight.bold,
-              color: Colors.grey,
+              color: Colors.black87,
             ),
           ),
           SizedBox(height: r.p(10)),
@@ -1899,7 +2526,7 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
               _hasError
                   ? _errorMessage
                   : _searchController.text.isEmpty
-                  ? 'Documents and folders shared with you will appear here'
+                  ? 'Files and documents shared with you by end users will appear here.'
                   : 'No results found for "${_searchController.text}"',
               style: TextStyle(fontSize: r.sp(14), color: Colors.grey.shade600),
               textAlign: TextAlign.center,
@@ -1912,7 +2539,7 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
               icon: const Icon(Icons.clear_all),
               label: const Text('Clear Search'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.indigo,
+                backgroundColor: const Color(0xFF0866E9),
                 foregroundColor: Colors.white,
               ),
             )
@@ -1980,65 +2607,71 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
 
     return DismissKeyboard(
       child: Scaffold(
+        backgroundColor: const Color(0xFFF4F9FF),
         body: ResponsivePage(
           padding: EdgeInsets.zero,
           child: Column(
             children: [
+              Padding(
+                padding: EdgeInsets.fromLTRB(r.p(20), r.p(12), r.p(20), 0),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('DELEGATED ACCESS', style: TextStyle(color: Color(0xFF6D82A1), fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.1)),
+                          SizedBox(height: 3),
+                          Text('Received Workspace', style: TextStyle(color: Color(0xFF202A4A), fontSize: 16, fontWeight: FontWeight.w800)),
+                        ],
+                      ),
+                    ),
+                    Text('Clearance managed', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 10, fontWeight: FontWeight.w600)),
+                  ],
+                ),
+              ),
               // ── Search bar + layout toggle ──────────────────────────────
-              Container(
-                padding: EdgeInsets.all(r.p(16)),
+              Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: r.p(16),
+                  vertical: r.p(10),
+                ),
                 child: Column(
                   children: [
                     Row(
                       children: [
                         Expanded(
-                          child: Container(
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(r.p(12)),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.grey.withAlpha(10),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: TextField(
-                              controller: _searchController,
-                              onChanged: (value) =>
-                                  _filterDocuments(searchQuery: value),
-                              maxLines: 1,
-                              decoration: InputDecoration(
-                                hintText: 'Search files, folders, owners...',
-                                hintStyle: TextStyle(color: Colors.grey.shade600),
-                                prefixIcon: const Icon(
-                                  Icons.search,
-                                  color: Colors.indigo,
-                                ),
-                                suffixIcon: _searchController.text.isNotEmpty
-                                    ? IconButton(
-                                        icon: const Icon(Icons.clear),
-                                        color: Colors.grey,
-                                        onPressed: _clearSearch,
-                                      )
-                                    : null,
-                                filled: true,
-                                fillColor: Colors.white,
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(r.p(12)),
-                                  borderSide: BorderSide.none,
-                                ),
-                                contentPadding: EdgeInsets.symmetric(
-                                  vertical: r.p(14),
-                                  horizontal: r.p(16),
-                                ),
-                              ),
+                          child: PillSearchField(
+                            controller: _searchController,
+                            hint: 'Search shared workspace...',
+                            onChanged: (value) =>
+                                _filterDocuments(searchQuery: value),
+                            onClear: _clearSearch,
+                            onSubmitted: (value) =>
+                                _filterDocuments(searchQuery: value),
+                            loading: _aiSearching,
+                            trailing: AiSparkleButton(
+                              onTap: () {
+                                final query = _searchController.text.trim();
+                                if (query.isEmpty) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Enter a search query first.',
+                                      ),
+                                    ),
+                                  );
+                                  return;
+                                }
+                                FocusScope.of(context).unfocus();
+                                _runAiSearch(query);
+                              },
                             ),
                           ),
                         ),
                         SizedBox(width: r.p(10)),
                         _buildLayoutSelector(),
-                        SizedBox(width: r.p(12)),
                       ],
                     ),
                     SizedBox(height: r.p(8)),
@@ -2095,33 +2728,37 @@ class _SharedMeScreenState extends State<SharedMeScreen> {
                         // ── Folders section ─────────────────────────────
                         if (_filteredFolders.isNotEmpty) ...[
                           SliverToBoxAdapter(
-                            child: _buildSectionHeader(
-                              'Folders',
-                              _filteredFolders.length,
-                              Icons.folder_open,
+                            child: SectionPanel(
+                              margin: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                              ),
+                              header: _buildSectionHeader(
+                                'Shared Folders',
+                                _filteredFolders.length,
+                                Icons.folder_open,
+                              ),
+                              child: _buildFolderSectionBody(),
                             ),
                           ),
-                          SliverList(
-                            delegate: SliverChildBuilderDelegate(
-                              (context, index) =>
-                                  _buildFolderCard(_filteredFolders[index]),
-                              childCount: _filteredFolders.length,
-                            ),
-                          ),
-                          const SliverToBoxAdapter(child: SizedBox(height: 8)),
+                          const SliverToBoxAdapter(child: SizedBox(height: 14)),
                         ],
 
                         // ── Files section ────────────────────────────────
                         if (_filteredDocuments.isNotEmpty) ...[
                           SliverToBoxAdapter(
-                            child: _buildSectionHeader(
-                              'Files',
-                              _filteredDocuments.length,
-                              Icons.file_copy_outlined,
+                            child: SectionPanel(
+                              margin: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                              ),
+                              header: _buildSectionHeader(
+                                'Delegated Files',
+                                _filteredDocuments.length,
+                                Icons.file_copy_outlined,
+                              ),
+                              child: _buildDocumentsContent(
+                                _filteredDocuments,
+                              ),
                             ),
-                          ),
-                          SliverToBoxAdapter(
-                            child: _buildDocumentsContent(_filteredDocuments),
                           ),
                         ],
 

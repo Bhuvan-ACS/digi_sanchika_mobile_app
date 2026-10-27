@@ -1,5 +1,11 @@
-﻿import 'package:digi_sanchika/utils/app_fonts.dart';
+import 'package:digi_sanchika/utils/app_fonts.dart';
+import 'package:digi_sanchika/controllers/multi_select_controller.dart';
+import 'package:digi_sanchika/widgets/file_type_icon.dart';
+import 'package:digi_sanchika/widgets/folder_illustration.dart';
+import 'package:digi_sanchika/widgets/responsive_document_gallery.dart';
 import 'package:digi_sanchika/utils/app_theme.dart';
+import 'package:digi_sanchika/theme/ui_theme.dart';
+import 'package:digi_sanchika/widgets/section_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:digi_sanchika/utils/responsive_helper.dart';
 import 'package:digi_sanchika/services/folder_service.dart';
@@ -8,7 +14,7 @@ import 'package:digi_sanchika/models/folder.dart';
 import 'package:digi_sanchika/models/document.dart';
 import 'package:digi_sanchika/presentations/Screens/home_page.dart';
 import 'package:digi_sanchika/services/document_opener_service.dart';
-import 'package:digi_sanchika/services/favorites_service.dart';
+import 'package:digi_sanchika/services/favorites_store.dart';
 import 'package:digi_sanchika/presentations/Screens/document_tools_screen.dart';
 import 'package:digi_sanchika/widgets/share_access_sheet.dart';
 import 'package:digi_sanchika/widgets/folder_alert_sheet.dart';
@@ -24,6 +30,8 @@ import 'dart:io';
 import 'package:digi_sanchika/models/app_view_mode.dart';
 import 'package:digi_sanchika/widgets/download_feedback.dart';
 import 'package:digi_sanchika/widgets/dismiss_keyboard.dart';
+import 'package:digi_sanchika/widgets/ai_sparkle_button.dart';
+import 'package:digi_sanchika/widgets/home_components.dart';
 
 // Add ShareUser model if not exists
 class ShareUser {
@@ -62,12 +70,41 @@ class ShareUser {
   }
 }
 
+class _DocumentActionItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  const _DocumentActionItem(this.icon, this.label, this.color);
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      Icon(icon, size: 22, color: color),
+      const SizedBox(width: 14),
+      Expanded(
+        child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+      ),
+    ],
+  );
+}
+
+/// One level of the folder hierarchy shown in the breadcrumb.
+class FolderCrumb {
+  final String id;
+  final String name;
+  const FolderCrumb(this.id, this.name);
+}
+
 class FolderScreen extends StatefulWidget {
   final String folderId;
   final String folderName;
   final String? parentFolderId;
   final String? parentFolderName;
   final String? userName;
+
+  /// Folders above this one (root first), used to build the breadcrumb.
+  final List<FolderCrumb> ancestors;
 
   const FolderScreen({
     super.key,
@@ -76,6 +113,7 @@ class FolderScreen extends StatefulWidget {
     this.parentFolderId,
     this.parentFolderName,
     this.userName,
+    this.ancestors = const [],
   });
 
   @override
@@ -89,25 +127,139 @@ class _FolderScreenState extends State<FolderScreen> {
   bool isDownloading = false;
   String _errorMessage = '';
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
   final bool _showRecent = false;
 
   // Add these variables for layout modes (same as HomePage)
   AppViewMode _currentViewMode = AppViewMode.list;
+
+  // Document-type filter: 'all' | 'pdf' | 'doc' | 'xls' | 'ppt' | 'image'
+  String _typeFilter = 'all';
   final Map<String, bool> _expandedStates = {};
 
-  final FavoritesService _favoritesService = FavoritesService();
-  final Map<String, String> _favoriteDocumentMap =
-      {}; // For document card expand/collapse
+  final FavoritesStore _favorites = FavoritesStore.instance;
 
   // Users for sharing
   List<ShareUser> _shareUsers = [];
+
+  // ── Multi-select ───────────────────────────────────────────────────────────
+  final MultiSelectController _selection = MultiSelectController();
+  Set<String> get _selectedIds => _selection.documentIds;
+  Set<String> get _selectedFolderIds => _selection.folderIds;
+  bool get _selecting => _selection.isSelecting;
+  int get _selectedCount => _selection.count;
+
+  void _toggleFolderSelected(Folder folder) {
+    setState(() => _selection.toggleFolder(folder.id));
+  }
+
+  List<Folder> get _selectedFolders => subfolders
+      .where((folder) => _selectedFolderIds.contains(folder.id))
+      .toList();
+
+  void _toggleSelected(Document doc) {
+    setState(() => _selection.toggleDocument(doc.id));
+  }
+
+  void _clearSelection() => setState(_selection.clear);
+
+  List<Document> get _selectedDocs =>
+      documents.where((d) => _selectedIds.contains(d.id)).toList();
+
+  Future<void> _shareSelected() async {
+    final docs = _selectedDocs;
+    final selectedFolders = _selectedFolders;
+    if (docs.length + selectedFolders.length != 1) {
+      _showTopMessage('Select a single item to share');
+      return;
+    }
+    if (selectedFolders.isNotEmpty) {
+      await _showFolderShareSheet(selectedFolders.first);
+    } else {
+      await _showShareDialog(docs.first);
+    }
+  }
+
+  Future<void> _downloadSelected() async {
+    final docs = _selectedDocs;
+    _clearSelection();
+    for (final d in docs) {
+      await _downloadDocument(d);
+    }
+  }
+
+  Future<void> _favouriteSelected() async {
+    final docs = _selectedDocs;
+    final allFav = docs.every((d) => _isFavorite(d.id));
+    _clearSelection();
+    for (final d in docs) {
+      if (_isFavorite(d.id) == allFav) await _toggleFavorite(d);
+    }
+  }
+
+  Future<void> _deleteSelected() async {
+    final docs = _selectedDocs;
+    final selectedFolders = _selectedFolders;
+    if (docs.isEmpty && selectedFolders.isEmpty) return;
+    if (docs.length + selectedFolders.length == 1) {
+      _clearSelection();
+      if (docs.isNotEmpty) {
+        final idx = documents.indexWhere((d) => d.id == docs.first.id);
+        _showDeleteOptions(context, idx, docs.first);
+      } else {
+        await _deleteFolder(selectedFolders.first);
+      }
+      return;
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete'),
+        content: Text(
+          'Move ${docs.length + selectedFolders.length} selected item(s) to the Recycle Bin?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+            child: const Text(
+              'Move to Recycle Bin',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    _clearSelection();
+    for (final folder in selectedFolders) {
+      await _deleteFolder(folder);
+    }
+    for (final d in docs) {
+      final idx = documents.indexWhere((x) => x.id == d.id);
+      if (idx >= 0) await _deleteDocument(idx);
+    }
+  }
 
   @override
   void initState() {
     super.initState();
     _loadFolderContents();
     _loadShareUsers();
+    _favorites.addListener(_onFavoritesChanged);
     _loadFavorites();
+  }
+
+  @override
+  void dispose() {
+    _favorites.removeListener(_onFavoritesChanged);
+    _searchFocusNode.dispose();
+    _selection.dispose();
+    super.dispose();
   }
 
   Future<void> _loadFolderContents() async {
@@ -146,6 +298,57 @@ class _FolderScreenState extends State<FolderScreen> {
       setState(() {
         _isLoading = false;
       });
+    }
+  }
+
+  Future<void> _showCreateFolderDialog() async {
+    final controller = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Create New Folder'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(
+            hintText: 'Enter folder name...',
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (value) => Navigator.pop(dialogContext, value.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.pop(dialogContext, controller.text.trim()),
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (!mounted || name == null || name.isEmpty) return;
+
+    try {
+      final result = await MyDocumentsService.createFolder(
+        folderName: name,
+        parentFolderId: widget.folderId,
+      );
+      if (!mounted) return;
+      if (result['success'] == true) {
+        await _loadFolderContents();
+        _showTopMessage('Folder created');
+      } else {
+        _showTopMessage(
+          result['error']?.toString() ?? 'Unable to create folder',
+        );
+      }
+    } catch (error) {
+      if (mounted) _showTopMessage('Unable to create folder: $error');
     }
   }
 
@@ -201,67 +404,28 @@ class _FolderScreenState extends State<FolderScreen> {
 
   Future<void> _loadFavorites() async {
     try {
-      final items = await _favoritesService.listFavorites();
-      if (!mounted) return;
-      _favoriteDocumentMap
-        ..clear()
-        ..addEntries(
-          items
-              .where((i) => i.entityType.toLowerCase().contains('doc'))
-              .map((i) => MapEntry(i.entityId, i.id)),
-        );
-      setState(() {});
+      await _favorites.load();
     } catch (_) {}
   }
 
-  bool _isFavorite(String documentId) {
-    return _favoriteDocumentMap.containsKey(documentId);
+  /// Redraws stars when any page changes a favourite.
+  void _onFavoritesChanged() {
+    if (mounted) setState(() {});
   }
 
+  bool _isFavorite(String documentId) => _favorites.isFavorite(documentId);
+
   Future<void> _toggleFavorite(Document document) async {
-    final isFav = _isFavorite(document.id);
-    final previousId = _favoriteDocumentMap[document.id];
-
-    setState(() {
-      if (isFav) {
-        _favoriteDocumentMap.remove(document.id);
-      } else {
-        _favoriteDocumentMap[document.id] = 'pending';
-      }
-    });
-
-    bool ok = false;
-    if (isFav) {
-      ok = await _favoritesService.removeFavorite(
-        entityId: document.id,
-        entityType: 'document',
-      );
-    } else {
-      ok = await _favoritesService.addFavorite(
-        entityId: document.id,
-        entityType: 'document',
-      );
-    }
-
+    final wasFavorite = _isFavorite(document.id);
+    final ok = await _favorites.toggleDocument(document.id);
+    if (!mounted) return;
     if (ok) {
-      if (!isFav) {
-        _showTopMessage('File added to favorites');
-      }
+      if (!wasFavorite) _showTopMessage('File added to favorites');
     } else {
-      if (!mounted) return;
-      setState(() {
-        if (isFav) {
-          if (previousId != null) {
-            _favoriteDocumentMap[document.id] = previousId;
-          }
-        } else {
-          _favoriteDocumentMap.remove(document.id);
-        }
-      });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            isFav ? 'Failed to remove favorite' : 'Failed to add favorite',
+            wasFavorite ? 'Failed to remove favorite' : 'Failed to add favorite',
           ),
           backgroundColor: AppColors.error,
         ),
@@ -330,6 +494,10 @@ class _FolderScreenState extends State<FolderScreen> {
           parentFolderId: widget.folderId,
           parentFolderName: widget.folderName,
           userName: widget.userName,
+          ancestors: [
+            ...widget.ancestors,
+            FolderCrumb(widget.folderId, widget.folderName),
+          ],
         ),
       ),
     );
@@ -348,8 +516,6 @@ class _FolderScreenState extends State<FolderScreen> {
       );
     }
   }
-
-
 
   void _showDeleteOptions(BuildContext context, int index, Document document) {
     showDialog(
@@ -735,146 +901,151 @@ class _FolderScreenState extends State<FolderScreen> {
     }
   }
 
-  void _showDocumentActions(Document document, int index) {
+  Future<void> _showDocumentActions(
+    Document document,
+    int index, [
+    BuildContext? anchorContext,
+  ]) async {
     final isFav = _isFavorite(document.id);
-    final documentOpener = DocumentOpenerService();
 
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(context.r.p(16)),
-        ),
+    final anchor = (anchorContext ?? context).findRenderObject() as RenderBox?;
+    final overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox?;
+    if (anchor == null || overlay == null || !anchor.attached) return;
+
+    final anchorRect = Rect.fromPoints(
+      anchor.localToGlobal(Offset.zero, ancestor: overlay),
+      anchor.localToGlobal(
+        anchor.size.bottomRight(Offset.zero),
+        ancestor: overlay,
       ),
-      builder: (context) {
-        final r = context.r;
-        return SafeArea(
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(height: r.p(8)),
-                Container(
-                  width: r.p(40),
-                  height: r.p(4),
-                  decoration: BoxDecoration(
-                    color: AppColors.border,
-                    borderRadius: BorderRadius.circular(r.p(2)),
-                  ),
-                ),
-                SizedBox(height: r.p(12)),
-                ListTile(
-                  leading: const Icon(Icons.visibility, color: Colors.purple),
-                  title: const Text('View'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    documentOpener.openPreviewDialog(
-                      context: context,
-                      document: document,
-                    );
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.build, color: AppColors.textSecondary),
-                  title: const Text('Tools'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _openDocumentTools(document);
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.share, color: AppColors.info),
-                  title: const Text('Share'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _showShareDialog(document);
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.download, color: AppColors.success),
-                  title: Text(
-                    document.allowDownload ? 'Download' : 'Request Download',
-                  ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _downloadDocument(document);
-                  },
-                ),
-                ListTile(
-                  leading: Icon(
-                    isFav ? Icons.star : Icons.star_border,
-                    color: Colors.amber,
-                  ),
-                  title: Text(
-                    isFav ? 'Remove from Favorites' : 'Add to Favorites',
-                  ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _toggleFavorite(document);
-                  },
-                ),
-                ListTile(
-                  leading: Icon(
-                    document.isPublishedToLibrary
-                        ? Icons.unpublished
-                        : Icons.publish,
-                    color: document.isPublishedToLibrary
-                        ? Colors.orange
-                        : AppColors.primary,
-                  ),
-                  title: Text(
-                    document.isPublishedToLibrary
-                        ? 'Unpublish from Library'
-                        : 'Publish to Library',
-                  ),
-                  onTap: () async {
-                    Navigator.pop(context);
-                    final wasPublished = document.isPublishedToLibrary;
-                    final svc = DocumentLibraryService();
-                    final result = wasPublished
-                        ? await svc.unpublishDocument(document.id)
-                        : await svc.publishDocument(document.id);
-                    if (!mounted) return;
+    );
+    final viewport = overlay.size;
+    const menuWidth = 260.0;
+    // PopupMenuItem uses a 48dp minimum height. This estimate is only used
+    // to choose whether the menu opens above or below the anchor; Flutter
+    // still performs the final viewport adjustment for the actual menu.
+    const menuHeight = 7 * 48.0 + 16.0;
+    const gap = 8.0;
+    const edge = 8.0;
 
-                    if (result['success'] == true) {
-                      setState(() {
-                        document.isPublishedToLibrary = !wasPublished;
-                      });
-                    }
+    final opensRight =
+        anchorRect.right + gap + menuWidth <= viewport.width - edge;
+    final left = opensRight
+        ? anchorRect.right + gap
+        : (anchorRect.left - gap - menuWidth)
+              .clamp(edge, viewport.width - menuWidth - edge)
+              .toDouble();
+    final top = (anchorRect.bottom + menuHeight <= viewport.height - edge)
+        ? anchorRect.top
+        : (anchorRect.top - menuHeight >= edge
+              ? anchorRect.top - menuHeight
+              : (viewport.height - menuHeight - edge)
+                    .clamp(edge, viewport.height)
+                    .toDouble());
 
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          result['success'] == true
-                              ? (wasPublished
-                                    ? 'Document unpublished from library'
-                                    : 'Document published to library')
-                              : result['message']?.toString() ??
-                                    'Action failed',
-                        ),
-                        backgroundColor: result['success'] == true
-                            ? AppColors.success
-                            : AppColors.error,
-                      ),
-                    );
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.delete, color: AppColors.error),
-                  title: const Text('Delete'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _showDeleteOptions(context, index, document);
-                  },
-                ),
-                SizedBox(height: r.p(8)),
-              ],
+    final action = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        left,
+        top,
+        viewport.width - left - menuWidth,
+        viewport.height - top - menuHeight,
+      ),
+      constraints: const BoxConstraints.tightFor(width: menuWidth),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      elevation: 8,
+      items: [
+        const PopupMenuItem(
+          value: 'view',
+          child: _DocumentActionItem(Icons.visibility, 'View', Colors.purple),
+        ),
+        const PopupMenuItem(
+          value: 'tools',
+          child: _DocumentActionItem(
+            Icons.build,
+            'Tools',
+            AppColors.textSecondary,
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'share',
+          child: _DocumentActionItem(Icons.share, 'Share', AppColors.info),
+        ),
+        PopupMenuItem(
+          value: 'download',
+          child: _DocumentActionItem(
+            Icons.download,
+            document.allowDownload ? 'Download' : 'Request Download',
+            AppColors.success,
+          ),
+        ),
+        PopupMenuItem(
+          value: 'favorite',
+          child: _DocumentActionItem(
+            isFav ? Icons.star : Icons.star_border,
+            isFav ? 'Remove from Favorites' : 'Add to Favorites',
+            Colors.amber,
+          ),
+        ),
+        PopupMenuItem(
+          value: 'publish',
+          child: _DocumentActionItem(
+            document.isPublishedToLibrary ? Icons.unpublished : Icons.publish,
+            document.isPublishedToLibrary
+                ? 'Unpublish from Library'
+                : 'Publish to Library',
+            document.isPublishedToLibrary ? Colors.orange : AppColors.primary,
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'delete',
+          child: _DocumentActionItem(Icons.delete, 'Delete', AppColors.error),
+        ),
+      ],
+    );
+
+    if (!mounted || action == null) return;
+    switch (action) {
+      case 'view':
+        DocumentOpenerService().openPreviewDialog(
+          context: context,
+          document: document,
+        );
+      case 'tools':
+        _openDocumentTools(document);
+      case 'share':
+        _showShareDialog(document);
+      case 'download':
+        _downloadDocument(document);
+      case 'favorite':
+        _toggleFavorite(document);
+      case 'publish':
+        final wasPublished = document.isPublishedToLibrary;
+        final result = wasPublished
+            ? await DocumentLibraryService().unpublishDocument(document.id)
+            : await DocumentLibraryService().publishDocument(document.id);
+        if (!mounted) return;
+        if (result['success'] == true) {
+          setState(() => document.isPublishedToLibrary = !wasPublished);
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              result['success'] == true
+                  ? (wasPublished
+                        ? 'Document unpublished from library'
+                        : 'Document published to library')
+                  : result['message']?.toString() ?? 'Action failed',
             ),
+            backgroundColor: result['success'] == true
+                ? AppColors.success
+                : AppColors.error,
           ),
         );
-      },
-    );
+      case 'delete':
+        _showDeleteOptions(context, index, document);
+    }
   }
 
   Future<void> _showFolderShareSheet(Folder folder) async {
@@ -892,6 +1063,23 @@ class _FolderScreenState extends State<FolderScreen> {
       context: context,
       folderId: folder.id,
       folderName: folder.name,
+    );
+  }
+
+  Future<void> _publishFolder(Folder folder) async {
+    final result = await DocumentLibraryService().publishFolder(folder.id);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          (result['message'] ??
+                  (result['success'] == true
+                      ? 'Folder published to library'
+                      : 'Folder publish failed'))
+              .toString(),
+        ),
+        backgroundColor: result['success'] == true ? Colors.green : Colors.red,
+      ),
     );
   }
 
@@ -1187,10 +1375,7 @@ class _FolderScreenState extends State<FolderScreen> {
                       const SizedBox(height: 8),
                       Text(
                         errorMessage!,
-                        style: TextStyle(
-                          color: AppColors.error,
-                          fontSize: 12,
-                        ),
+                        style: TextStyle(color: AppColors.error, fontSize: 12),
                       ),
                     ],
 
@@ -1480,13 +1665,13 @@ class _FolderScreenState extends State<FolderScreen> {
                 if (user.employeeId != null)
                   Text(
                     user.employeeId!,
-                    style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textTertiary,
+                    ),
                   ),
                 if (user.department != null)
-                  Text(
-                    user.department!,
-                    style: TextStyle(fontSize: 11,),
-                  ),
+                  Text(user.department!, style: TextStyle(fontSize: 11)),
               ],
             ),
             trailing: Checkbox(
@@ -1527,100 +1712,311 @@ class _FolderScreenState extends State<FolderScreen> {
   }
 
   /// NEW: Method to build layout selector (same as HomePage)
-  Widget _buildLayoutSelector() {
+  // ── Search card, type filter and layout toggle ────────────────────────────
+  bool get _isFiltering =>
+      _typeFilter != 'all' || _searchController.text.trim().isNotEmpty;
+
+  void _resetFilters() {
+    setState(() {
+      _typeFilter = 'all';
+      _searchController.clear();
+    });
+  }
+
+  Widget _buildEmptyDocuments() {
     final r = context.r;
-    return PopupMenuButton<AppViewMode>(
-      tooltip: 'Change Layout',
-      icon: Icon(
-        _getViewModeIcon(_currentViewMode),
-        color: const Color.fromARGB(255, 226, 227, 231),
-        size: r.sp(24),
+    if (!_isFiltering) {
+      return Center(
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: r.p(24)),
+          child: Text(
+            subfolders.isEmpty ? 'This folder is empty' : 'No documents found',
+          ),
+        ),
+      );
+    }
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: r.p(24)),
+      child: Column(
+        children: [
+          Icon(Icons.search_off_rounded, size: r.sp(40), color: Colors.grey),
+          SizedBox(height: r.p(8)),
+          Text(
+            _typeFilter != 'all'
+                ? 'No ${_typeFilterLabels[_typeFilter]} files match your search'
+                : 'No files match your search',
+            textAlign: TextAlign.center,
+          ),
+          TextButton(
+            onPressed: _resetFilters,
+            child: const Text('Clear search & filter'),
+          ),
+        ],
       ),
-      onSelected: (AppViewMode mode) {
-        setState(() {
-          _currentViewMode = mode;
-        });
-      },
-      itemBuilder: (BuildContext context) => <PopupMenuEntry<AppViewMode>>[
-        PopupMenuItem<AppViewMode>(
-          value: AppViewMode.list,
-          child: Row(
-            children: [
-              Icon(Icons.list, color: AppColors.primary),
-              SizedBox(width: 8),
-              Text('List View'),
-              if (_currentViewMode == AppViewMode.list)
-                Icon(Icons.check, color: AppColors.success, size: 16),
-            ],
-          ),
-        ),
-        PopupMenuItem<AppViewMode>(
-          value: AppViewMode.grid2x2,
-          child: Row(
-            children: [
-              Icon(Icons.grid_on, color: AppColors.primary),
-              SizedBox(width: 8),
-              Text('Grid (2x2)'),
-              if (_currentViewMode == AppViewMode.grid2x2)
-                Icon(Icons.check, color: AppColors.success, size: 16),
-            ],
-          ),
-        ),
-        PopupMenuItem<AppViewMode>(
-          value: AppViewMode.grid3x3,
-          child: Row(
-            children: [
-              Icon(Icons.view_module, color: AppColors.primary),
-              SizedBox(width: 8),
-              Text('Grid (3x3)'),
-              if (_currentViewMode == AppViewMode.grid3x3)
-                Icon(Icons.check, color: AppColors.success, size: 16),
-            ],
-          ),
-        ),
-        PopupMenuItem<AppViewMode>(
-          value: AppViewMode.compact,
-          child: Row(
-            children: [
-              Icon(Icons.view_headline, color: AppColors.primary),
-              SizedBox(width: 8),
-              Text('Compact View'),
-              if (_currentViewMode == AppViewMode.compact)
-                Icon(Icons.check, color: AppColors.success, size: 16),
-            ],
-          ),
-        ),
-        PopupMenuItem<AppViewMode>(
-          value: AppViewMode.detailed,
-          child: Row(
-            children: [
-              Icon(Icons.table_rows, color: AppColors.primary),
-              SizedBox(width: 8),
-              Text('Detailed View'),
-              if (_currentViewMode == AppViewMode.detailed)
-                Icon(Icons.check, color: AppColors.success, size: 16),
-            ],
-          ),
-        ),
-      ],
     );
   }
 
-  IconData _getViewModeIcon(AppViewMode mode) {
-    switch (mode) {
-      case AppViewMode.list:
-        return Icons.list;
-      case AppViewMode.grid2x2:
-        return Icons.grid_on;
-      case AppViewMode.grid3x3:
-        return Icons.view_module;
-      case AppViewMode.compact:
-        return Icons.view_headline;
-      case AppViewMode.detailed:
-        return Icons.table_rows;
+  Widget _buildSearchRow() {
+    final r = context.r;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(r.p(12), r.p(4), r.p(12), 0),
+      child: Row(
+        children: [
+          Expanded(
+            child: PillSearchField(
+              controller: _searchController,
+              focusNode: _searchFocusNode,
+              hint: 'Search in folder...',
+              loading: _aiSearching,
+              onChanged: (_) => setState(() => _aiResultIds = null),
+              onSubmitted: (_) => setState(() => _aiResultIds = null),
+              onClear: () => setState(() {
+                _searchController.clear();
+                _aiResultIds = null;
+              }),
+              trailing: AiSparkleButton(size: 36, onTap: _handleAiSearch),
+            ),
+          ),
+          const SizedBox(width: 8),
+          _buildViewToggle(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterButton() {
+    final active = _typeFilter != 'all';
+    PopupMenuItem<String> item(String value, String label, IconData icon) {
+      final selected = _typeFilter == value;
+      return PopupMenuItem<String>(
+        value: value,
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              size: 20,
+              color: selected ? AppColors.primary : AppColors.textSecondary,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  color: selected ? AppColors.primary : null,
+                ),
+              ),
+            ),
+            if (selected)
+              const Icon(Icons.check, size: 18, color: AppColors.primary),
+          ],
+        ),
+      );
+    }
+
+    return PopupMenuButton<String>(
+      tooltip: 'Filter by type',
+      padding: EdgeInsets.zero,
+      offset: const Offset(0, 42),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      onSelected: (v) => setState(() => _typeFilter = v),
+      itemBuilder: (_) => [
+        item(
+          'all',
+          active ? 'Reset filter (show all)' : 'All files',
+          active ? Icons.filter_alt_off_outlined : Icons.apps_rounded,
+        ),
+        const PopupMenuDivider(height: 1),
+        item('pdf', 'PDF', Icons.picture_as_pdf_outlined),
+        item('doc', 'DOC / DOCX', Icons.description_outlined),
+        item('xls', 'XLS / XLSX', Icons.table_chart_outlined),
+        item('ppt', 'PPT / PPTX', Icons.slideshow_outlined),
+        item('image', 'Images', Icons.image_outlined),
+      ],
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        decoration: BoxDecoration(
+          color: active
+              ? AppColors.primary.withAlpha(22)
+              : const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: active
+                ? AppColors.primary.withAlpha(70)
+                : const Color(0xFFE2E8F0),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.filter_list_rounded,
+              size: 17,
+              color: active ? AppColors.primary : AppColors.textSecondary,
+            ),
+            const SizedBox(width: 5),
+            Text(
+              active ? (_typeFilterLabels[_typeFilter] ?? 'Filter') : 'Filter',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: active ? AppColors.primary : AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(width: 2),
+            Icon(
+              Icons.keyboard_arrow_down_rounded,
+              size: 16,
+              color: active ? AppColors.primary : AppColors.textSecondary,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Document ids from the last AI search, in relevance order; null when the
+  /// list is filtered by plain text instead.
+  List<String>? _aiResultIds;
+  bool _aiSearching = false;
+
+  /// AI assistant search (POST /search/semantic), narrowed to this folder's
+  /// documents. Falls back to the name filter if the request fails.
+  Future<void> _handleAiSearch() async {
+    final query = _searchController.text.trim();
+    if (query.isEmpty) {
+      _showTopMessage('Enter a search query first.');
+      FocusScope.of(context).requestFocus(_searchFocusNode);
+      return;
+    }
+    _searchFocusNode.unfocus();
+    setState(() => _aiSearching = true);
+    final result = await MyDocumentsService.semanticSearch(
+      query: query,
+      scope: 'all',
+      limit: 50,
+    );
+    if (!mounted) return;
+    final results = result['results'];
+    setState(() {
+      _aiSearching = false;
+      _aiResultIds = result['success'] == true && results is List
+          ? results.map((r) => r['documentId'].toString()).toList()
+          : null;
+    });
+    if (result['success'] != true) {
+      _showTopMessage(
+        '${result['error'] ?? 'AI search failed'}. Showing name matches.',
+      );
     }
   }
 
+  Widget _buildViewToggle() {
+    Widget seg(AppViewMode mode, IconData icon, String tip) {
+      final active = _currentViewMode == mode;
+      return Tooltip(
+        message: tip,
+        child: GestureDetector(
+          onTap: () => setState(() => _currentViewMode = mode),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: active ? const Color(0xFF4F9BFF) : Colors.transparent,
+              borderRadius: BorderRadius.circular(13),
+            ),
+            child: Icon(
+              icon,
+              size: 20,
+              color: active ? Colors.white : AppColors.textSecondary,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFDDE3F0)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          seg(AppViewMode.list, Icons.view_list_rounded, 'List'),
+          seg(AppViewMode.grid2x2, Icons.grid_view_rounded, '2 columns'),
+          seg(AppViewMode.grid3x3, Icons.apps_rounded, '3 columns'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCountRow(int count) {
+    final r = context.r;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(r.p(16), r.p(8), r.p(12), 0),
+      child: Row(
+        children: [
+          Text(
+            '$count ${count == 1 ? 'item' : 'items'}',
+            style: TextStyle(
+              fontSize: r.sp(13),
+              color: AppColors.textSecondary,
+            ),
+          ),
+          if (_typeFilter != 'all') ...[
+            const SizedBox(width: 8),
+            InkWell(
+              borderRadius: BorderRadius.circular(999),
+              onTap: () => setState(() => _typeFilter = 'all'),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(10, 3, 6, 3),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withAlpha(20),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _typeFilterLabels[_typeFilter] ?? '',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    const Icon(
+                      Icons.close_rounded,
+                      size: 14,
+                      color: AppColors.primary,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+          const Spacer(),
+          _buildFilterButton(),
+        ],
+      ),
+    );
+  }
+
+  String _folderMetadata(Folder folder) {
+    final age = DateTime.now().difference(folder.createdAt);
+    final days = age.inDays;
+    final label = days <= 0
+        ? 'today'
+        : days == 1
+        ? '1d ago'
+        : '${days}d ago';
+    return '${folder.documents.length} files • 0 KB • $label';
+  }
 
   Widget _buildSubfoldersSection(List<Folder> folders) {
     if (folders.isEmpty) return const SizedBox.shrink();
@@ -1637,51 +2033,78 @@ class _FolderScreenState extends State<FolderScreen> {
               Container(
                 margin: EdgeInsets.only(bottom: r.p(8)),
                 child: Material(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(r.p(12)),
+                  color: _selectedFolderIds.contains(folder.id)
+                      ? const Color(0xFFE3F1FF)
+                      : Colors.white,
+                  borderRadius: BorderRadius.circular(r.p(16)),
                   elevation: 1,
                   child: InkWell(
                     onTap: () => _navigateToSubfolder(folder),
-                    borderRadius: BorderRadius.circular(r.p(12)),
+                    onLongPress: () => _toggleFolderSelected(folder),
+                    borderRadius: BorderRadius.circular(r.p(16)),
                     child: Container(
                       padding: EdgeInsets.symmetric(
                         horizontal: r.p(16),
-                        vertical: r.p(12),
+                        vertical: r.p(14),
                       ),
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(r.p(12)),
+                        borderRadius: BorderRadius.circular(r.p(16)),
                         border: Border.all(
                           color: AppColors.borderLight,
                           width: 1,
                         ),
                       ),
                       child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           Container(
-                            padding: EdgeInsets.all(r.p(10)),
+                            width: r.p(52),
+                            height: r.p(52),
+                            alignment: Alignment.center,
                             decoration: BoxDecoration(
-                              color: AppColors.warningLight,
-                              borderRadius: BorderRadius.circular(r.p(10)),
+                              color: const Color(0xFFE8F3FF),
+                              borderRadius: BorderRadius.circular(r.p(12)),
                             ),
-                            child: Icon(
-                              Icons.folder,
-                              color: AppColors.warning,
-                              size: r.sp(28),
-                            ),
+                            child: FolderIllustration(size: r.p(36)),
                           ),
                           SizedBox(width: r.p(16)),
                           Expanded(
-                            child: Text(
-                              folder.name,
-                              style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: r.sp(16),
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  folder.name,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: r.sp(16),
+                                    color: const Color(0xFF1E293B),
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                SizedBox(height: r.p(4)),
+                                Text(
+                                  _folderMetadata(folder),
+                                  style: TextStyle(
+                                    fontSize: r.sp(12),
+                                    fontWeight: FontWeight.w400,
+                                    color: const Color(0xFF64748B),
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
                             ),
                           ),
+                          if (_selectedFolderIds.contains(folder.id))
+                            _selectionCheckbox(true),
                           PopupMenuButton<String>(
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(
+                              minWidth: 48,
+                              minHeight: 48,
+                            ),
                             itemBuilder: (context) => const [
                               PopupMenuItem(
                                 value: 'download',
@@ -1720,6 +2143,19 @@ class _FolderScreenState extends State<FolderScreen> {
                                 ),
                               ),
                               PopupMenuItem(
+                                value: 'publish',
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.library_add,
+                                      color: AppColors.primary,
+                                    ),
+                                    SizedBox(width: 8),
+                                    Text('Publish to Library'),
+                                  ],
+                                ),
+                              ),
+                              PopupMenuItem(
                                 value: 'delete',
                                 child: Row(
                                   children: [
@@ -1737,6 +2173,8 @@ class _FolderScreenState extends State<FolderScreen> {
                                 _downloadFolderZip(folder);
                               } else if (v == 'share') {
                                 _showFolderShareSheet(folder);
+                              } else if (v == 'publish') {
+                                _publishFolder(folder);
                               } else if (v == 'delete') {
                                 _confirmDeleteFolder(folder);
                               }
@@ -1757,11 +2195,18 @@ class _FolderScreenState extends State<FolderScreen> {
             for (final folder in folders)
               ListTile(
                 dense: true,
+                selected: _selectedFolderIds.contains(folder.id),
+                selectedTileColor: const Color(0xFFE3F1FF),
                 visualDensity: const VisualDensity(vertical: -2),
-                leading: Icon(
-                  Icons.folder,
-                  color: Colors.amber,
-                  size: r.sp(20),
+                leading: Container(
+                  width: r.p(36),
+                  height: r.p(36),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE8F3FF),
+                    borderRadius: BorderRadius.circular(r.p(10)),
+                  ),
+                  child: FolderIllustration(size: r.p(26)),
                 ),
                 title: Text(
                   folder.name,
@@ -1774,7 +2219,10 @@ class _FolderScreenState extends State<FolderScreen> {
                       value: 'download',
                       child: Row(
                         children: [
-                          Icon(Icons.download_rounded, color: AppColors.success),
+                          Icon(
+                            Icons.download_rounded,
+                            color: AppColors.success,
+                          ),
                           SizedBox(width: 8),
                           Text('Download'),
                         ],
@@ -1801,6 +2249,16 @@ class _FolderScreenState extends State<FolderScreen> {
                       ),
                     ),
                     PopupMenuItem(
+                      value: 'publish',
+                      child: Row(
+                        children: [
+                          Icon(Icons.library_add, color: AppColors.primary),
+                          SizedBox(width: 8),
+                          Text('Publish to Library'),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
                       value: 'delete',
                       child: Row(
                         children: [
@@ -1818,12 +2276,15 @@ class _FolderScreenState extends State<FolderScreen> {
                       _downloadFolderZip(folder);
                     } else if (v == 'share') {
                       _showFolderShareSheet(folder);
+                    } else if (v == 'publish') {
+                      _publishFolder(folder);
                     } else if (v == 'delete') {
                       _confirmDeleteFolder(folder);
                     }
                   },
                 ),
                 onTap: () => _navigateToSubfolder(folder),
+                onLongPress: () => _toggleFolderSelected(folder),
               ),
           ],
         );
@@ -1834,7 +2295,8 @@ class _FolderScreenState extends State<FolderScreen> {
         final spacing = _currentViewMode == AppViewMode.grid3x3
             ? r.p(8)
             : r.p(12);
-        final aspect = _currentViewMode == AppViewMode.grid3x3 ? 1.05 : 1.15;
+        final dense = _currentViewMode == AppViewMode.grid3x3;
+        final tileHeight = dense ? 112.0 : 150.0;
         content = GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
@@ -1843,54 +2305,100 @@ class _FolderScreenState extends State<FolderScreen> {
             crossAxisCount: crossAxisCount,
             crossAxisSpacing: spacing,
             mainAxisSpacing: spacing,
-            childAspectRatio: aspect,
+            mainAxisExtent: tileHeight,
           ),
           itemBuilder: (context, index) {
             final folder = folders[index];
+            final picked = _selectedFolderIds.contains(folder.id);
             return Card(
               elevation: 1,
+              clipBehavior: Clip.antiAlias,
+              color: picked ? const Color(0xFFE3F1FF) : Colors.white,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(r.p(12)),
+                borderRadius: BorderRadius.circular(dense ? r.p(16) : r.p(22)),
               ),
               child: InkWell(
-                borderRadius: BorderRadius.circular(r.p(12)),
+                borderRadius: BorderRadius.circular(dense ? r.p(16) : r.p(22)),
                 onTap: () => _navigateToSubfolder(folder),
+                onLongPress: () => _toggleFolderSelected(folder),
                 child: Stack(
                   children: [
                     Padding(
-                      padding: EdgeInsets.all(r.p(10)),
+                      padding: EdgeInsets.fromLTRB(
+                        dense ? r.p(10) : r.p(14),
+                        dense ? r.p(10) : r.p(14),
+                        dense ? r.p(10) : r.p(14),
+                        dense ? r.p(8) : r.p(12),
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.max,
                         children: [
                           Container(
-                            width: r.p(40),
-                            height: r.p(40),
+                            width: dense ? 32 : 46,
+                            height: dense ? 32 : 46,
                             decoration: BoxDecoration(
-                              color: Colors.amber.withAlpha(22),
-                              borderRadius: BorderRadius.circular(r.p(10)),
+                              color: const Color(0xFFE8F3FF),
+                              borderRadius: BorderRadius.circular(r.p(12)),
                             ),
-                            child: const Icon(
-                              Icons.folder_rounded,
-                              color: Colors.amber,
+                            child: FolderIllustration(
+                              size: dense ? r.p(25) : r.p(34),
                             ),
                           ),
-                          SizedBox(height: r.p(8)),
+                          SizedBox(height: dense ? 4 : 6),
                           Text(
                             folder.name,
-                            maxLines: 2,
+                            maxLines: dense ? 1 : 2,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               fontWeight: FontWeight.w700,
-                              fontSize: r.sp(13),
+                              fontSize: _currentViewMode == AppViewMode.grid3x3
+                                  ? r.sp(11.5)
+                                  : r.sp(14.5),
+                            ),
+                          ),
+                          SizedBox(height: dense ? 3 : 5),
+                          Text(
+                            '${folder.documents.length} files',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: dense ? r.sp(9.5) : r.sp(12),
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            _folderMetadata(folder),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: dense ? r.sp(9) : r.sp(11),
+                              color: AppColors.textTertiary,
                             ),
                           ),
                         ],
                       ),
                     ),
                     Positioned(
-                      top: 4,
-                      right: 4,
+                      top: dense ? 4 : 8,
+                      right: dense ? 4 : 8,
                       child: PopupMenuButton<String>(
+                        padding: EdgeInsets.zero,
+                        iconSize: _currentViewMode == AppViewMode.grid3x3
+                            ? 16
+                            : 20,
+                        constraints: const BoxConstraints(),
+                        style: _currentViewMode == AppViewMode.grid3x3
+                            ? const ButtonStyle(
+                                minimumSize: WidgetStatePropertyAll(
+                                  Size(24, 24),
+                                ),
+                                padding: WidgetStatePropertyAll(
+                                  EdgeInsets.zero,
+                                ),
+                              )
+                            : null,
                         itemBuilder: (context) => const [
                           PopupMenuItem(
                             value: 'download',
@@ -1929,6 +2437,19 @@ class _FolderScreenState extends State<FolderScreen> {
                             ),
                           ),
                           PopupMenuItem(
+                            value: 'publish',
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.library_add,
+                                  color: AppColors.primary,
+                                ),
+                                SizedBox(width: 8),
+                                Text('Publish to Library'),
+                              ],
+                            ),
+                          ),
+                          PopupMenuItem(
                             value: 'delete',
                             child: Row(
                               children: [
@@ -1946,12 +2467,20 @@ class _FolderScreenState extends State<FolderScreen> {
                             _downloadFolderZip(folder);
                           } else if (v == 'share') {
                             _showFolderShareSheet(folder);
+                          } else if (v == 'publish') {
+                            _publishFolder(folder);
                           } else if (v == 'delete') {
                             _confirmDeleteFolder(folder);
                           }
                         },
                       ),
                     ),
+                    if (picked)
+                      Positioned(
+                        right: r.p(8),
+                        bottom: r.p(8),
+                        child: _selectionCheckbox(true),
+                      ),
                   ],
                 ),
               ),
@@ -1961,19 +2490,28 @@ class _FolderScreenState extends State<FolderScreen> {
         break;
     }
 
+    // Same bordered panel as the Folders / Documents sections on My Files.
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          'Subfolders',
-          style: TextStyle(fontSize: r.sp(16), fontWeight: FontWeight.bold),
+        SectionPanel(
+          margin: EdgeInsets.zero,
+          header: _panelTitle('Subfolders'),
+          child: content,
         ),
-        SizedBox(height: r.p(8)),
-        content,
         SizedBox(height: r.p(16)),
       ],
     );
   }
+
+  Widget _panelTitle(String text) => Text(
+    text,
+    style: const TextStyle(
+      fontSize: 18,
+      fontWeight: FontWeight.w700,
+      color: Color(0xFF0F172A),
+    ),
+  );
 
   // File icon helpers (used by compact/grid views)
   IconData _getFileIcon(String type) {
@@ -2036,9 +2574,38 @@ class _FolderScreenState extends State<FolderScreen> {
 
   Widget _buildDocumentsSection(List<Document> documents) {
     if (documents.isEmpty) {
-      return const Center(child: Text('No documents found'));
+      return _buildEmptyDocuments();
     }
 
+    final galleryMode = switch (_currentViewMode) {
+      AppViewMode.grid2x2 => ResponsiveDocumentViewMode.grid2,
+      AppViewMode.grid3x3 => ResponsiveDocumentViewMode.grid3,
+      _ => ResponsiveDocumentViewMode.list,
+    };
+    return SectionPanel(
+      margin: EdgeInsets.zero,
+      header: _panelTitle('Documents'),
+      child: ResponsiveDocumentGallery(
+        documents: documents,
+        mode: galleryMode,
+        shrinkWrap: true,
+        onView: (document) => _selecting
+            ? _toggleSelected(document)
+            : _handleDocumentDoubleTap(document),
+        onOverflow: (document, anchorContext, _) => _showDocumentActions(
+          document,
+          documents.indexOf(document),
+          anchorContext,
+        ),
+        onVersions: (document) =>
+            _showDocumentActions(document, documents.indexOf(document)),
+        onDownload: _downloadDocument,
+        onShare: _showShareDialog,
+        canDownload: (document) => document.allowDownload,
+      ),
+    );
+
+    /*
     final r = context.r;
 
     Widget content;
@@ -2059,9 +2626,24 @@ class _FolderScreenState extends State<FolderScreen> {
               ListTile(
                 dense: true,
                 visualDensity: const VisualDensity(vertical: -2),
-                leading: Icon(
-                  _getFileIcon(doc.type),
-                  color: _getFileColor(doc.type),
+                selected: _selectedIds.contains(doc.id),
+                selectedTileColor: const Color(0xFFE3F1FF),
+                leading: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_selecting) ...[
+                      _selectionCheckbox(_selectedIds.contains(doc.id)),
+                      const SizedBox(width: 12),
+                    ],
+                    FileTypeIcon.orElse(
+                      doc.type,
+                      26,
+                      Icon(
+                        _getFileIcon(doc.type),
+                        color: _getFileColor(doc.type),
+                      ),
+                    ),
+                  ],
                 ),
                 title: Text(
                   doc.name,
@@ -2073,7 +2655,10 @@ class _FolderScreenState extends State<FolderScreen> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                onTap: () => _handleDocumentDoubleTap(doc),
+                onTap: () => _selecting
+                    ? _toggleSelected(doc)
+                    : _handleDocumentDoubleTap(doc),
+                onLongPress: () => _toggleSelected(doc),
               ),
           ],
         );
@@ -2084,7 +2669,8 @@ class _FolderScreenState extends State<FolderScreen> {
         final spacing = _currentViewMode == AppViewMode.grid3x3
             ? r.p(8)
             : r.p(12);
-        final aspect = _currentViewMode == AppViewMode.grid3x3 ? 0.88 : 0.95;
+        final dense = _currentViewMode == AppViewMode.grid3x3;
+        final tileHeight = dense ? 124.0 : 132.0;
         content = GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
@@ -2093,49 +2679,72 @@ class _FolderScreenState extends State<FolderScreen> {
             crossAxisCount: crossAxisCount,
             crossAxisSpacing: spacing,
             mainAxisSpacing: spacing,
-            childAspectRatio: aspect,
+            mainAxisExtent: tileHeight,
           ),
           itemBuilder: (context, index) {
             final doc = documents[index];
             final iconData = _getFileIcon(doc.type);
             final color = _getFileColor(doc.type);
+            final picked = _selectedIds.contains(doc.id);
             return Card(
-              elevation: 1,
+              elevation: picked ? 0 : 1,
+              color: picked ? const Color(0xFFE3F1FF) : null,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(r.p(12)),
+                side: picked
+                    ? const BorderSide(color: AppColors.primary, width: 1.5)
+                    : BorderSide.none,
               ),
               child: InkWell(
                 borderRadius: BorderRadius.circular(r.p(12)),
-                onTap: () => _handleDocumentDoubleTap(doc),
+                onTap: () => _selecting
+                    ? _toggleSelected(doc)
+                    : _handleDocumentDoubleTap(doc),
+                onLongPress: () => _toggleSelected(doc),
                 child: Padding(
                   padding: EdgeInsets.all(r.p(10)),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        width: r.p(40),
-                        height: r.p(40),
-                        decoration: BoxDecoration(
-                          color: color.withAlpha(18),
-                          borderRadius: BorderRadius.circular(r.p(10)),
-                        ),
-                        child: Icon(iconData, color: color),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Container(
+                            width: dense ? 36 : 44,
+                            height: dense ? 36 : 44,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: color.withAlpha(18),
+                              borderRadius: BorderRadius.circular(r.p(10)),
+                            ),
+                            child: FileTypeIcon.orElse(
+                              doc.type,
+                              dense ? 24 : 30,
+                              Icon(iconData, color: color),
+                            ),
+                          ),
+                          if (_selecting) _selectionCheckbox(picked),
+                        ],
                       ),
-                      SizedBox(height: r.p(8)),
+                      SizedBox(height: dense ? 6 : 8),
                       Text(
                         doc.name,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontWeight: FontWeight.w700,
-                          fontSize: r.sp(13),
+                          fontSize: _currentViewMode == AppViewMode.grid3x3
+                              ? r.sp(10.5)
+                              : r.sp(13),
                         ),
                       ),
                       const Spacer(),
                       Text(
                         doc.type.toUpperCase(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: r.sp(11),
+                          fontSize: dense ? r.sp(10) : r.sp(11),
                           color: AppColors.textSecondary,
                           fontWeight: FontWeight.w600,
                         ),
@@ -2161,6 +2770,7 @@ class _FolderScreenState extends State<FolderScreen> {
         content,
       ],
     );
+    */
   }
 
   @override
@@ -2170,28 +2780,17 @@ class _FolderScreenState extends State<FolderScreen> {
     if (_isLoading) {
       return DismissKeyboard(
         child: Scaffold(
-            backgroundColor:Colors.grey.shade100,
+          backgroundColor: const Color(0xFFF4F9FF),
 
           appBar: AppBar(
             leading: IconButton(
               icon: const Icon(Icons.arrow_back, color: Colors.black87),
-              onPressed: (){
+              onPressed: () {
                 Navigator.pop(context);
               },
             ),
-            title: Text(
-              widget.folderName,
-             style:w500_14Poppins(),
-            ),
-            backgroundColor:Colors.grey.shade100,
-            actions: [
-              _buildLayoutSelector(),
-              SizedBox(width: r.p(8)),
-              IconButton(
-                icon: const Icon(Icons.refresh, color: Colors.black87),
-                onPressed: _loadFolderContents,
-              ),
-            ],
+            title: Text(widget.folderName, style: w500_14Poppins()),
+            backgroundColor: const Color(0xFFF4F9FF),
           ),
           body: const Center(child: CircularProgressIndicator()),
         ),
@@ -2201,7 +2800,7 @@ class _FolderScreenState extends State<FolderScreen> {
     if (_errorMessage.isNotEmpty) {
       return DismissKeyboard(
         child: Scaffold(
-            backgroundColor:Colors.grey.shade100,
+          backgroundColor: const Color(0xFFF4F9FF),
 
           appBar: AppBar(
             leading: IconButton(
@@ -2210,109 +2809,299 @@ class _FolderScreenState extends State<FolderScreen> {
                 Navigator.pop(context);
               },
             ),
-            title: Text(
-              widget.folderName,
-            style:w500_14Poppins(),
-            ),
-                     backgroundColor:Colors.grey.shade100,
-
-            actions: [
-              _buildLayoutSelector(),
-              SizedBox(width: r.p(8)),
-              IconButton(
-                icon: const Icon(Icons.refresh, color: Colors.black87),
-                onPressed: _loadFolderContents,
-              ),
-            ],
+            title: Text(widget.folderName, style: w500_14Poppins()),
+            backgroundColor: const Color(0xFFF4F9FF),
           ),
-          body: Center(child: Text(_errorMessage)),
+          body: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.cloud_off_rounded,
+                    size: 40,
+                    color: Colors.grey,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(_errorMessage, textAlign: TextAlign.center),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: _loadFolderContents,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Retry'),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       );
     }
 
     final filteredDocuments = _getFilteredDocuments();
+    final filteredFolders = _getFilteredFolders();
 
-    return DismissKeyboard(
-      child: Scaffold(
-            backgroundColor:Colors.grey.shade100,
-
-        appBar: AppBar(
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.black87),
-            onPressed: () {
-              Navigator.pop(context);
-            },
-          ),
-          title: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                widget.folderName,
-              style:w500_14Poppins(),
-              ),
-              if (widget.parentFolderName != null)
-                Text(
-                  'In: ${widget.parentFolderName}',
-                  style:w500_14Poppins(),
+    return PopScope(
+      canPop: !_selecting,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _selecting) _clearSelection();
+      },
+      child: DismissKeyboard(
+        child: Scaffold(
+          backgroundColor: const Color(0xFFF4F9FF),
+          appBar: _selecting ? _buildSelectionAppBar() : _buildNormalAppBar(r),
+          floatingActionButton: _selecting
+              ? null
+              : FloatingActionButton(
+                  onPressed: _showCreateFolderDialog,
+                  backgroundColor: UiColors.primaryActive,
+                  foregroundColor: Colors.white,
+                  child: const Icon(Icons.add_rounded),
                 ),
+          floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+          body: Column(
+            children: [
+              _buildBreadcrumb(),
+              _buildSearchRow(),
+              _buildCountRow(filteredDocuments.length + filteredFolders.length),
+              Expanded(
+                child: RefreshIndicator(
+                  onRefresh: _loadFolderContents,
+                  child: ListView(
+                    padding: EdgeInsets.fromLTRB(
+                      r.p(12),
+                      r.p(4),
+                      r.p(12),
+                      r.p(88),
+                    ),
+                    children: [
+                      ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: r.isDesktop ? 800 : double.infinity,
+                        ),
+                        child: _buildSubfoldersSection(filteredFolders),
+                      ),
+                      ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: r.isDesktop ? 800 : double.infinity,
+                        ),
+                        child: _buildDocumentsSection(filteredDocuments),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
-                   backgroundColor:Colors.grey.shade100,
+        ),
+      ),
+    );
+  }
 
-          elevation: 0,
-          actions: [
-            _buildLayoutSelector(),
-            SizedBox(width: r.p(8)),
-            IconButton(
-              icon: const Icon(
-                Icons.notifications_active_outlined,
-                color: Colors.black87,
-              ),
-              tooltip: 'Folder alerts',
-              onPressed: () => FolderAlertSheet.show(
-                context: context,
-                folderId: widget.folderId,
-                folderName: widget.folderName,
+  AppBar _buildNormalAppBar(ResponsiveHelper r) {
+    return AppBar(
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back, color: Colors.black87),
+        onPressed: () => Navigator.pop(context),
+      ),
+      title: Text(widget.folderName, style: w500_14Poppins()),
+      backgroundColor: const Color(0xFFF4F9FF),
+      elevation: 0,
+      actions: [
+        IconButton(
+          icon: const Icon(
+            Icons.notifications_active_outlined,
+            color: Colors.black87,
+          ),
+          tooltip: 'Folder alerts',
+          onPressed: () => FolderAlertSheet.show(
+            context: context,
+            folderId: widget.folderId,
+            folderName: widget.folderName,
+          ),
+        ),
+      ],
+    );
+  }
+
+  AppBar _buildSelectionAppBar() {
+    return AppBar(
+      backgroundColor: const Color(0xFFF4F9FF),
+      elevation: 0,
+      centerTitle: true,
+      leading: IconButton(
+        icon: const Icon(Icons.close, color: Colors.black87),
+        tooltip: 'Cancel selection',
+        onPressed: _clearSelection,
+      ),
+      title: Text(
+        '$_selectedCount selected',
+        style: const TextStyle(
+          fontWeight: FontWeight.w600,
+          color: Colors.black87,
+        ),
+      ),
+      actions: [
+        IconButton(
+          tooltip: 'Share selected',
+          icon: const Icon(Icons.share_outlined),
+          onPressed: _shareSelected,
+        ),
+        IconButton(
+          tooltip: 'Delete selected',
+          icon: const Icon(Icons.delete_outline_rounded, color: Colors.red),
+          onPressed: _deleteSelected,
+        ),
+      ],
+    );
+  }
+
+  /// Connected directory-line breadcrumb: Home > My Documents > ... > current.
+  Widget _buildBreadcrumb() {
+    final r = context.r;
+    final ancestors = widget.ancestors;
+
+    void popLevels(int n) {
+      var c = 0;
+      Navigator.popUntil(context, (_) => c++ >= n);
+    }
+
+    void toRoot() => Navigator.popUntil(context, (route) => route.isFirst);
+
+    Widget chevron() => Padding(
+      padding: EdgeInsets.symmetric(horizontal: r.p(4)),
+      child: Icon(
+        Icons.chevron_right_rounded,
+        size: r.sp(18),
+        color: AppColors.textTertiary,
+      ),
+    );
+
+    Widget crumb(String label, {VoidCallback? onTap, bool current = false}) {
+      return InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: onTap,
+        child: Container(
+          padding: EdgeInsets.symmetric(horizontal: r.p(8), vertical: r.p(5)),
+          decoration: BoxDecoration(
+            color: current ? AppColors.primary.withAlpha(18) : null,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: r.sp(13),
+              fontWeight: current ? FontWeight.w600 : FontWeight.w500,
+              color: current ? AppColors.primary : AppColors.textSecondary,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.fromLTRB(r.p(8), r.p(2), r.p(8), r.p(2)),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.start,
+          children: [
+            InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: toRoot,
+              child: Padding(
+                padding: EdgeInsets.all(r.p(5)),
+                child: Icon(
+                  Icons.home_outlined,
+                  size: r.sp(20),
+                  color: AppColors.textSecondary,
+                ),
               ),
             ),
-            IconButton(
-              icon: const Icon(Icons.refresh, color: Colors.black87),
-              onPressed: _loadFolderContents,
+            chevron(),
+            crumb('My Documents', onTap: toRoot),
+            for (var i = 0; i < ancestors.length; i++) ...[
+              chevron(),
+              crumb(
+                ancestors[i].name,
+                onTap: () => popLevels(ancestors.length - i),
+              ),
+            ],
+            chevron(),
+            crumb(widget.folderName, current: true),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSelectionBar() {
+    final docs = _selectedDocs;
+    final allFav = docs.isNotEmpty && docs.every((d) => _isFavorite(d.id));
+
+    Widget item(
+      IconData icon,
+      String label,
+      VoidCallback onTap, {
+      Color color = Colors.black87,
+    }) {
+      return Expanded(
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, color: color, size: 24),
+                const SizedBox(height: 4),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: color,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return SafeArea(
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withAlpha(20),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
             ),
           ],
         ),
-        body: Column(
+        child: Row(
           children: [
-            Padding(
-              padding: EdgeInsets.all(r.p(12)),
-              child: TextField(
-                controller: _searchController,
-                decoration: const InputDecoration(
-                  hintText: 'Search in folder...',
-                  prefixIcon: Icon(Icons.search),
-                  border: OutlineInputBorder(),
-                ),
-                onChanged: (_) => setState(() {}),
-              ),
+            item(Icons.share_outlined, 'Share', _shareSelected),
+            item(Icons.file_download_outlined, 'Download', _downloadSelected),
+            item(
+              Icons.delete_outline,
+              'Delete',
+              _deleteSelected,
+              color: AppColors.error,
             ),
-            Expanded(
-              child: ListView(
-                padding: EdgeInsets.all(r.p(12)),
-                children: [
-                  ConstrainedBox(
-                    constraints: BoxConstraints(
-                      maxWidth: r.isDesktop ? 800 : double.infinity,
-                    ),
-                    child: _buildSubfoldersSection(subfolders),
-                  ),
-                  ConstrainedBox(
-                    constraints: BoxConstraints(
-                      maxWidth: r.isDesktop ? 800 : double.infinity,
-                    ),
-                    child: _buildDocumentsSection(filteredDocuments),
-                  ),
-                ],
-              ),
+            item(
+              allFav ? Icons.star : Icons.star_border,
+              'Favourite',
+              _favouriteSelected,
             ),
           ],
         ),
@@ -2358,144 +3147,148 @@ class _FolderScreenState extends State<FolderScreen> {
     // Check if this specific document is expanded using its ID
     bool isExpanded = _expandedStates[document.id] ?? false;
 
+    final isSelected = _selectedIds.contains(document.id);
+
     return InkWell(
-      onTap: () =>
-          documentOpener.openViewer(context: context, document: document),
+      onTap: () => _selecting
+          ? _toggleSelected(document)
+          : documentOpener.openViewer(context: context, document: document),
+      onLongPress: () => _toggleSelected(document),
       borderRadius: BorderRadius.circular(r.p(12)),
       child: Card(
         margin: EdgeInsets.only(bottom: r.p(16)),
-        elevation: 2,
+        elevation: isSelected ? 0 : 2,
+        color: isSelected ? const Color(0xFFE3F1FF) : null,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(r.p(12)),
+          side: isSelected
+              ? const BorderSide(color: AppColors.primary, width: 1.5)
+              : BorderSide.none,
         ),
         child: Padding(
           padding: EdgeInsets.all(r.p(16)),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Top row with icon, document info, and expand/collapse button
+              // Checkbox | icon | name + meta | actions (all vertically centred)
               Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
+                  if (_selecting) ...[
+                    _selectionCheckbox(isSelected),
+                    SizedBox(width: r.p(12)),
+                  ],
                   Container(
-                    padding: EdgeInsets.all(r.p(12)),
+                    width: r.p(52),
+                    height: r.p(52),
+                    alignment: Alignment.center,
                     decoration: BoxDecoration(
                       color: color.withAlpha(10),
                       borderRadius: BorderRadius.circular(r.p(8)),
                     ),
-                    child: Icon(icon, color: color, size: r.sp(32)),
+                    child: FileTypeIcon.orElse(
+                      document.type,
+                      r.sp(32),
+                      Icon(icon, color: color, size: r.sp(32)),
+                    ),
                   ),
-                  SizedBox(width: r.p(16)),
+                  SizedBox(width: r.p(14)),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                children: [
-                                  Text(
-                                    document.name,
-                                    style: TextStyle(
-                                      fontSize: r.sp(16),
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                    maxLines: isExpanded ? 2 : 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                
-                                        Text(
-                          'Type: ${document.type} • $formattedDate',
+                        Text(
+                          document.name,
+                          style: TextStyle(
+                            fontSize: r.sp(16),
+                            fontWeight: FontWeight.bold,
+                          ),
+                          maxLines: isExpanded ? 2 : 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        SizedBox(height: r.p(2)),
+                        Text(
+                          'Type: ${document.type} \u2022 $formattedDate',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: r.sp(11),
                             color: AppColors.textTertiary,
                           ),
                         ),
-                                ],
-                              ),
-                            ),
-                            // EXPAND/COLLAPSE BUTTON (same as HomePage)
-                       
-                            // Vertical More Options Button (Three Dots)
-                            IconButton(
-                              onPressed: () => _toggleFavorite(document),
-                              icon: Icon(
-                                _isFavorite(document.id)
-                                    ? Icons.favorite
-                                    : Icons.favorite_border,
-                                color: _isFavorite(document.id)
-                                    ? AppColors.error
-                                    : Colors.white,
-                              ),
-                              tooltip: 'Favorite',
-                            ),
-
-                                 GestureDetector(
-                              onTap: () {
-                                setState(() {
-                                  // Toggle only this specific document using its ID
-                                  _expandedStates[document.id] = !isExpanded;
-                                });
-                              },
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 300),
-                                width: r.p(36),
-                                height: r.p(36),
-                                decoration: BoxDecoration(
-                                  color: isExpanded
-                                      ? color.withAlpha(20)
-                                      : AppColors.surfaceVariant,
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: isExpanded
-                                        ? color.withAlpha(100)
-                                        : Colors.transparent,
-                                    width: 1.5,
-                                  ),
-                                ),
-                                child: Center(
-                                  child: AnimatedRotation(
-                                    duration: const Duration(milliseconds: 300),
-                                    turns: isExpanded ? 0.5 : 0,
-                                    child: Icon(
-                                      Icons.keyboard_arrow_down_rounded,
-                                      size: r.sp(22),
-                                      color: isExpanded
-                                          ? color
-                                          : AppColors.textSecondary,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            SizedBox(width: r.p(8)),
-                            IconButton(
-                              onPressed: () =>
-                                  _showDocumentActions(document, index),
-                              icon: Container(
-                                width: r.p(36),
-                                height: r.p(36),
-                                decoration: BoxDecoration(
-                                  color: AppColors.surfaceVariant,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Center(
-                                  child: Icon(
-                                    Icons.more_vert,
-                                    size: r.sp(20),
-                                    color: AppColors.textSecondary,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                  
                       ],
                     ),
                   ),
+                  SizedBox(width: r.p(8)),
+                  // Expand / collapse details
+                  GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _expandedStates[document.id] = !isExpanded;
+                      });
+                    },
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      width: r.p(34),
+                      height: r.p(34),
+                      decoration: BoxDecoration(
+                        color: isExpanded
+                            ? color.withAlpha(20)
+                            : AppColors.surfaceVariant,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: isExpanded
+                              ? color.withAlpha(100)
+                              : Colors.transparent,
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Center(
+                        child: AnimatedRotation(
+                          duration: const Duration(milliseconds: 300),
+                          turns: isExpanded ? 0.5 : 0,
+                          child: Icon(
+                            Icons.keyboard_arrow_down_rounded,
+                            size: r.sp(22),
+                            color: isExpanded ? color : AppColors.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  // File actions: only while this document is selected
+                  if (isSelected) ...[
+                    SizedBox(width: r.p(4)),
+                    InkWell(
+                      customBorder: const CircleBorder(),
+                      onTap: () => _toggleFavorite(document),
+                      child: Padding(
+                        padding: EdgeInsets.all(r.p(6)),
+                        child: Icon(
+                          _isFavorite(document.id)
+                              ? Icons.favorite
+                              : Icons.favorite_border,
+                          size: r.sp(22),
+                          color: _isFavorite(document.id)
+                              ? AppColors.error
+                              : AppColors.textSecondary,
+                        ),
+                      ),
+                    ),
+                    InkWell(
+                      customBorder: const CircleBorder(),
+                      onTap: () => _showDocumentActions(document, index),
+                      child: Padding(
+                        padding: EdgeInsets.all(r.p(6)),
+                        child: Icon(
+                          Icons.more_vert,
+                          size: r.sp(22),
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
 
@@ -2552,9 +3345,9 @@ class _FolderScreenState extends State<FolderScreen> {
 
                       // ACTION BUTTONS ROW
                       Row(
-                      //   spacing: r.p(8),
-                      //   runSpacing: r.p(8),
-                      //   alignment: WrapAlignment.spaceEvenly,
+                        //   spacing: r.p(8),
+                        //   runSpacing: r.p(8),
+                        //   alignment: WrapAlignment.spaceEvenly,
                         children: [
                           // VIEW BUTTON
                           SizedBox(
@@ -2611,7 +3404,9 @@ class _FolderScreenState extends State<FolderScreen> {
                               ),
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: AppColors.success,
-                                side: const BorderSide(color: AppColors.success),
+                                side: const BorderSide(
+                                  color: AppColors.success,
+                                ),
                                 padding: EdgeInsets.symmetric(vertical: r.p(8)),
                               ),
                             ),
@@ -2629,6 +3424,24 @@ class _FolderScreenState extends State<FolderScreen> {
     );
   }
 
+  Widget _selectionCheckbox(bool selected) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 150),
+      width: 24,
+      height: 24,
+      decoration: BoxDecoration(
+        color: selected ? AppColors.primary : Colors.white,
+        borderRadius: BorderRadius.circular(7),
+        border: Border.all(
+          color: selected ? AppColors.primary : AppColors.textTertiary,
+          width: 1.5,
+        ),
+      ),
+      child: selected
+          ? const Icon(Icons.check, size: 16, color: Colors.white)
+          : null,
+    );
+  }
 
   // Helper method for detail rows
   Widget _buildDetailRow(String label, String value, IconData icon) {
@@ -2674,14 +3487,63 @@ class _FolderScreenState extends State<FolderScreen> {
     }
   }
 
- 
+  static const _typeFilterLabels = <String, String>{
+    'pdf': 'PDF',
+    'doc': 'DOC / DOCX',
+    'xls': 'XLS / XLSX',
+    'ppt': 'PPT / PPTX',
+    'image': 'Images',
+  };
+
+  static const _typeFilterExts = <String, Set<String>>{
+    'pdf': {'pdf'},
+    'doc': {'doc', 'docx'},
+    'xls': {'xls', 'xlsx', 'csv'},
+    'ppt': {'ppt', 'pptx'},
+    'image': {'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'heic', 'image'},
+  };
+
+  String _extOf(String raw) {
+    var e = raw.toLowerCase().trim();
+    if (e.contains('/')) e = e.split('/').last;
+    if (e.contains('.')) e = e.split('.').last;
+    return e;
+  }
+
+  bool _matchesTypeFilter(Document d) {
+    if (_typeFilter == 'all') return true;
+    final exts = _typeFilterExts[_typeFilter] ?? const <String>{};
+    return exts.contains(_extOf(d.type)) || exts.contains(_extOf(d.name));
+  }
+
+  List<Folder> _getFilteredFolders() {
+    // Folders have no document type, so a type filter hides them.
+    if (_typeFilter != 'all') return const <Folder>[];
+    final term = _searchController.text.trim().toLowerCase();
+    if (term.isEmpty) return subfolders;
+    return subfolders
+        .where((f) => f.name.toLowerCase().contains(term))
+        .toList();
+  }
 
   List<Document> _getFilteredDocuments() {
+    final base = _searchFilteredDocuments();
+    if (_typeFilter == 'all') return base;
+    return base.where(_matchesTypeFilter).toList();
+  }
+
+  List<Document> _searchFilteredDocuments() {
     List<Document> allDocs = List.from(documents);
 
     if (_showRecent) {
       allDocs.sort((a, b) => b.uploadDate.compareTo(a.uploadDate));
       return allDocs.take(10).toList();
+    }
+
+    final aiIds = _aiResultIds;
+    if (aiIds != null) {
+      return allDocs.where((d) => aiIds.contains(d.id)).toList()
+        ..sort((a, b) => aiIds.indexOf(a.id).compareTo(aiIds.indexOf(b.id)));
     }
 
     final searchTerm = _searchController.text.toLowerCase();

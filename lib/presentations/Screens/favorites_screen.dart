@@ -1,21 +1,24 @@
 import 'package:digi_sanchika/utils/app_fonts.dart';
+import 'package:digi_sanchika/presentations/Screens/folder_screen.dart';
+import 'package:digi_sanchika/services/favorites_store.dart';
+import 'package:digi_sanchika/widgets/file_type_icon.dart';
+import 'package:digi_sanchika/widgets/folder_illustration.dart';
+import 'package:digi_sanchika/widgets/section_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:digi_sanchika/services/favorites_service.dart';
 import 'package:digi_sanchika/models/favorite_item.dart';
 import 'package:digi_sanchika/services/document_library_service.dart';
 import 'package:digi_sanchika/local_storage.dart';
 import 'package:digi_sanchika/models/document.dart';
+import 'package:digi_sanchika/widgets/file_type_dropdown.dart';
 import 'package:digi_sanchika/services/document_opener_service.dart';
 import 'package:digi_sanchika/services/my_documents_service.dart';
 import 'package:digi_sanchika/services/api_service.dart';
-import 'package:path_provider/path_provider.dart';
-import 'dart:io';
-import 'package:digi_sanchika/services/download_requests_service.dart';
 import 'package:digi_sanchika/widgets/share_access_sheet.dart';
-import 'package:digi_sanchika/services/download_access_service.dart';
 import 'package:digi_sanchika/models/app_view_mode.dart';
-import 'package:digi_sanchika/widgets/view_mode_popup_button.dart';
-import 'package:digi_sanchika/widgets/download_feedback.dart';
+import 'package:digi_sanchika/widgets/layout_capsule.dart';
+import 'package:digi_sanchika/widgets/home_components.dart';
+import 'package:digi_sanchika/widgets/ai_sparkle_button.dart';
 import 'package:digi_sanchika/widgets/responsive_page.dart';
 
 class FavoriteEntry {
@@ -26,7 +29,11 @@ class FavoriteEntry {
 }
 
 class FavoritesScreen extends StatefulWidget {
-  const FavoritesScreen({super.key});
+  const FavoritesScreen({super.key, this.embedded = false});
+
+  /// True when shown as a bottom-navigation tab: the host page already
+  /// provides the title bar, so this screen skips its own app bar.
+  final bool embedded;
 
   @override
   State<FavoritesScreen> createState() => _FavoritesScreenState();
@@ -34,20 +41,48 @@ class FavoritesScreen extends StatefulWidget {
 
 class _FavoritesScreenState extends State<FavoritesScreen> {
   final FavoritesService _service = FavoritesService();
+  final TextEditingController _searchController = TextEditingController();
   bool _isLoading = true;
   List<FavoriteEntry> _documents = [];
+  List<FavoriteItem> _folders = [];
   AppViewMode _currentViewMode = AppViewMode.list;
+  /// File count and total bytes per folder id, from locally cached documents.
+  Map<String, ({int count, double bytes})> _folderDocStats = {};
 
   @override
   void initState() {
     super.initState();
+    FavoritesStore.instance.addListener(_onFavoritesChanged);
     _load();
   }
 
-  Future<void> _load() async {
-    setState(() => _isLoading = true);
+  /// Keeps this list in step with favourites changed on any other page:
+  /// removals disappear straight away, additions trigger a quiet reload.
+  void _onFavoritesChanged() {
+    if (!mounted || _isLoading) return;
+    final store = FavoritesStore.instance;
+    final hasNew = !_storeDocsShown(store) || !_storeFoldersShown(store);
+    setState(() {
+      _documents.removeWhere((e) => !store.isFavorite(e.favorite.entityId));
+      _folders.removeWhere((f) => !store.isFavoriteFolder(f.entityId));
+    });
+    if (hasNew) _load(silent: true);
+  }
+
+  bool _storeDocsShown(FavoritesStore store) =>
+      store.documentIds.every(
+        (id) => _documents.any((e) => e.favorite.entityId == id),
+      );
+
+  bool _storeFoldersShown(FavoritesStore store) =>
+      store.folderIds.every((id) => _folders.any((f) => f.entityId == id));
+
+  Future<void> _load({bool silent = false}) async {
+    if (!silent) setState(() => _isLoading = true);
     try {
       final items = await _service.listFavorites();
+      final folderFavorites =
+          items.where((i) => i.entityType.toLowerCase().contains('folder')).toList();
       final docFavorites =
           items
               .where((i) => i.entityType.toLowerCase().contains('doc'))
@@ -55,6 +90,17 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
 
       final localDocs = await LocalStorageService.loadDocuments();
       final localMap = {for (final doc in localDocs) doc.id: doc};
+      final folderStats = <String, ({int count, double bytes})>{};
+      for (final doc in localDocs) {
+        final id = doc.folderId;
+        if (id == null || id.isEmpty) continue;
+        final raw = doc.size.replaceAll(RegExp(r'[^0-9.]'), '');
+        final prev = folderStats[id] ?? (count: 0, bytes: 0.0);
+        folderStats[id] = (
+          count: prev.count + 1,
+          bytes: prev.bytes + (double.tryParse(raw) ?? 0),
+        );
+      }
 
       final List<FavoriteEntry?> entries =
           List<FavoriteEntry?>.filled(docFavorites.length, null);
@@ -80,12 +126,15 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
 
       if (!mounted) return;
       setState(() {
+        _folders = folderFavorites;
+        _folderDocStats = folderStats;
         _documents = entries.whereType<FavoriteEntry>().toList();
         _isLoading = false;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
+        _folders = [];
         _documents = [];
         _isLoading = false;
       });
@@ -96,6 +145,47 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
         ),
       );
     }
+  }
+
+  @override
+  void dispose() {
+    FavoritesStore.instance.removeListener(_onFavoritesChanged);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  /// Favourite documents after the search and the File Type choice.
+  List<FavoriteEntry> get _visibleDocuments {
+    final searched = _searchedDocuments;
+    if (_docTypeFilter == 'All') return searched;
+    return searched
+        .where((e) => matchesFileTypeKey(e.document, _docTypeFilter))
+        .toList();
+  }
+
+  List<FavoriteEntry> get _searchedDocuments {
+    final query = _searchController.text.trim().toLowerCase();
+    if (query.isEmpty) return _documents;
+    final aiIds = _aiResultIds;
+    if (aiIds != null) {
+      return _documents.where((e) => aiIds.contains(e.document.id)).toList()
+        ..sort(
+          (a, b) => aiIds
+              .indexOf(a.document.id)
+              .compareTo(aiIds.indexOf(b.document.id)),
+        );
+    }
+    return _documents
+        .where((entry) => _displayName(entry).toLowerCase().contains(query))
+        .toList();
+  }
+
+  List<FavoriteItem> get _visibleFolders {
+    final query = _searchController.text.trim().toLowerCase();
+    if (query.isEmpty) return _folders;
+    return _folders
+        .where((folder) => (folder.name ?? folder.entityId).toLowerCase().contains(query))
+        .toList();
   }
 
   Future<Document> _fetchDocumentForFavorite(FavoriteItem favorite) async {
@@ -293,54 +383,6 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
     return _extractFileType(filename);
   }
 
-  IconData _getDocumentIcon(String fileType) {
-    final icons = {
-      'PDF': Icons.picture_as_pdf,
-      'DOC': Icons.description,
-      'DOCX': Icons.description,
-      'XLS': Icons.table_chart,
-      'XLSX': Icons.table_chart,
-      'PPT': Icons.slideshow,
-      'PPTX': Icons.slideshow,
-      'CSV': Icons.table_chart,
-      'TXT': Icons.text_snippet,
-      'JPG': Icons.image,
-      'JPEG': Icons.image,
-      'PNG': Icons.image,
-      'IMAGE': Icons.image,
-      'ZIP': Icons.archive,
-      'RAR': Icons.archive,
-    };
-    return icons[fileType.toUpperCase()] ?? Icons.insert_drive_file;
-  }
-
-  Color _getDocumentColor(String fileType) {
-    final colors = {
-      'PDF': Colors.red,
-      'DOC': Colors.blue,
-      'DOCX': Colors.blue,
-      'XLS': Colors.green,
-      'XLSX': Colors.green,
-      'PPT': Colors.orange,
-      'PPTX': Colors.orange,
-      'CSV': Colors.green,
-      'TXT': Colors.grey,
-      'JPG': Colors.deepOrange,
-      'JPEG': Colors.deepOrange,
-      'JFIF': Colors.deepOrange,
-      'PNG': Colors.deepOrange,
-      'IMAGE': Colors.deepOrange,
-    };
-    return colors[fileType.toUpperCase()] ?? Colors.indigo;
-  }
-
-  String _normalizeEntityType(String raw) {
-    final value = raw.toLowerCase();
-    if (value.contains('doc')) return 'document';
-    if (value.contains('folder')) return 'folder';
-    return raw;
-  }
-
   String _displayName(FavoriteEntry entry) {
     final name = entry.document.name.trim();
     if (name.isNotEmpty && name.toLowerCase() != 'unknown') return name;
@@ -349,401 +391,601 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
     return entry.favorite.entityId;
   }
 
-  String _formatDateDDMMYYYY(String dateString) {
-    try {
-      final date = DateTime.parse(dateString);
-      final day = date.day.toString().padLeft(2, '0');
-      final month = date.month.toString().padLeft(2, '0');
-      final year = date.year.toString();
-      return '$day $month $year';
-    } catch (_) {
-      return '';
+  String _folderName(FavoriteItem folder) =>
+      (folder.name?.trim().isNotEmpty ?? false)
+          ? folder.name!.trim()
+          : folder.entityId;
+
+  // ── Flat design tokens ────────────────────────────────────────────────────
+  static const _ink = Color(0xFF0F172A);
+  static const _muted = Color(0xFF64748B);
+  static const _accent = Color(0xFF2A76BD);
+  static const _cardBorder = Color(0xFFF1F5F9);
+
+  static const List<PopupMenuEntry<String>> _favoriteMenuItems = [
+    PopupMenuItem(
+      value: 'share',
+      child: ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: Icon(Icons.share_outlined, color: Colors.blue),
+        title: Text('Share'),
+      ),
+    ),
+    PopupMenuItem(
+      value: 'remove',
+      child: ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: Icon(Icons.star_rounded, color: Colors.amber),
+        title: Text('Remove from Favourites'),
+      ),
+    ),
+  ];
+
+  /// Vertical 3-dot menu with Share and Remove from Favourites.
+  Widget _menu(Future<void> Function(String action) onSelected) {
+    return PopupMenuButton<String>(
+      padding: EdgeInsets.zero,
+      position: PopupMenuPosition.under,
+      offset: const Offset(0, 6),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 8,
+      tooltip: 'More actions',
+      style: const ButtonStyle(
+        minimumSize: WidgetStatePropertyAll(Size(36, 36)),
+        padding: WidgetStatePropertyAll(EdgeInsets.zero),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      icon: const Icon(Icons.more_vert, size: 20, color: _muted),
+      itemBuilder: (_) => _favoriteMenuItems,
+      onSelected: onSelected,
+    );
+  }
+
+  bool _ensureOnline(String message) {
+    if (ApiService.isConnected) return true;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.orange),
+    );
+    return false;
+  }
+
+  Future<void> _onFolderAction(FavoriteItem folder, String action) async {
+    if (action == 'share') {
+      if (!_ensureOnline('Cannot share while offline')) return;
+      await ShareAccessSheet.showForFolder(
+        context: context,
+        folderId: folder.entityId,
+        folderName: _folderName(folder),
+      );
+    } else if (action == 'remove') {
+      setState(() => _folders.remove(folder));
+      final ok = await FavoritesStore.instance.removeFolder(folder.entityId);
+      if (!ok && mounted) _load(silent: true);
     }
   }
 
-  Widget _buildFavoriteCard(FavoriteEntry entry) {
-    final doc = entry.document;
-    final displayName = _displayName(entry);
-    final docType =
-        (doc.type.isNotEmpty ? doc.type : doc.fileType).toUpperCase();
-    final icon = _getDocumentIcon(docType);
-    final color = _getDocumentColor(docType);
-    final formattedDate = _formatDateDDMMYYYY(doc.uploadDate);
-    final subtitle =
-        formattedDate.isNotEmpty
-            ? 'Type: $docType • $formattedDate'
-            : 'Type: $docType';
+  Future<void> _onDocumentAction(FavoriteEntry entry, String action) async {
+    if (action == 'share') {
+      if (!_ensureOnline('Cannot share while offline')) return;
+      await ShareAccessSheet.showForDocument(
+        context: context,
+        documentId: entry.document.id,
+        documentName: entry.document.name,
+      );
+    } else if (action == 'remove') {
+      setState(() => _documents.remove(entry));
+      final ok = await FavoritesStore.instance.removeDocument(
+        entry.favorite.entityId,
+      );
+      if (!ok && mounted) _load(silent: true);
+    }
+  }
 
-    return InkWell(
-      onTap: () =>
-          DocumentOpenerService().openPreviewDialog(context: context, document: doc),
-      borderRadius: BorderRadius.circular(12),
-      child: Card(
-        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-        elevation: 2,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: color.withAlpha(20),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(icon, color: color, size: 28),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      displayName,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.more_vert),
-                onPressed: () => _showDocumentActions(entry),
-              ),
-            ],
-          ),
+  void _openFolder(FavoriteItem folder) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FolderScreen(
+          folderId: folder.entityId,
+          folderName: _folderName(folder),
         ),
       ),
     );
   }
 
-  void _showDocumentActions(FavoriteEntry entry) {
-    final document = entry.document;
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+  // ── Subtitles ─────────────────────────────────────────────────────────────
+  static String _formatBytes(double bytes) {
+    final mb = bytes / (1024 * 1024);
+    if (mb >= 1) return '${mb.toStringAsFixed(1)} MB';
+    return '${(bytes / 1024).toStringAsFixed(0)} KB';
+  }
+
+  String _folderSubtitle(FavoriteItem folder) {
+    final stats = _folderDocStats[folder.entityId];
+    final count = stats?.count ?? 0;
+    return '$count ${count == 1 ? 'file' : 'files'} • '
+        '${_formatBytes(stats?.bytes ?? 0)}';
+  }
+
+  String _documentSubtitle(Document doc) {
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    final parts = <String>[];
+    final date = DateTime.tryParse(doc.uploadDate)?.toLocal();
+    if (date != null) {
+      parts.add(
+        '${date.day.toString().padLeft(2, '0')} ${months[date.month - 1]} '
+        '${date.year}',
+      );
+    }
+    final bytes = double.tryParse(doc.size.replaceAll(RegExp(r'[^0-9.]'), ''));
+    if (bytes != null) {
+      parts.add(_formatBytes(bytes));
+    } else if (doc.size.isNotEmpty && doc.size != 'Unknown') {
+      parts.add(doc.size);
+    }
+    return parts.join(' • ');
+  }
+
+  IconData _documentIcon(Document doc) {
+    final type = (doc.type.isNotEmpty ? doc.type : doc.fileType).toUpperCase();
+    switch (type) {
+      case 'PDF':
+        return Icons.picture_as_pdf_outlined;
+      case 'DOC':
+      case 'DOCX':
+        return Icons.description_outlined;
+      case 'XLS':
+      case 'XLSX':
+      case 'CSV':
+        return Icons.table_chart_outlined;
+      case 'PPT':
+      case 'PPTX':
+        return Icons.slideshow_outlined;
+      case 'TXT':
+        return Icons.article_outlined;
+      case 'ZIP':
+      case 'RAR':
+        return Icons.folder_zip_outlined;
+      case 'JPG':
+      case 'JPEG':
+      case 'PNG':
+      case 'GIF':
+      case 'WEBP':
+      case 'IMAGE':
+        return Icons.image_outlined;
+    }
+    return Icons.insert_drive_file_outlined;
+  }
+
+  // ── Cards ─────────────────────────────────────────────────────────────────
+  Widget _iconBox({required Color background, required Widget child}) {
+    return Container(
+      width: 46,
+      height: 46,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(14),
       ),
-      builder: (context) => SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 8),
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 12),
-              ListTile(
-                leading: const Icon(Icons.visibility, color: Colors.purple),
-                title: const Text('View'),
-                onTap: () {
-                  Navigator.pop(context);
-                  DocumentOpenerService().openPreviewDialog(
-                    context: context,
-                    document: document,
-                  );
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.share, color: Colors.blue),
-                title: const Text('Share'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showShareDialog(document);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.download, color: Colors.green),
-                title: Text(
-                  document.allowDownload ? 'Download' : 'Request Download',
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  _downloadDocument(document);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.star, color: Colors.amber),
-                title: const Text('Remove from Favorites'),
-                onTap: () async {
-                  Navigator.pop(context);
-                  await _service.removeFavorite(
-                    entityId: entry.favorite.entityId,
-                    entityType: _normalizeEntityType(entry.favorite.entityType),
-                  );
-                  if (!mounted) return;
-                  setState(() {
-                    _documents.remove(entry);
-                  });
-                },
-              ),
-              const SizedBox(height: 8),
-            ],
-          ),
-        ),
+      child: child,
+    );
+  }
+
+  Widget _folderIcon() => _iconBox(
+    background: const Color(0xFFEBF3FF),
+    child: const FolderIllustration(size: 32),
+  );
+
+  /// The app's existing coloured file-type icons.
+  Widget _documentIconBox(Document doc) {
+    final type = doc.type.isNotEmpty ? doc.type : doc.fileType;
+    return _iconBox(
+      background: const Color(0xFFEFF5FF),
+      child: FileTypeIcon.orElse(
+        type,
+        28,
+        Icon(_documentIcon(doc), color: _accent, size: 24),
       ),
     );
   }
 
-  Future<void> _downloadDocument(Document document) async {
-    if (!ApiService.isConnected) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Cannot download while offline'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
+  /// Flat card: white, 16px radius, 1px faint border, no shadow.
+  Widget _flatCard({required VoidCallback onTap, required Widget child}) {
+    return Material(
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: _cardBorder),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(onTap: onTap, child: child),
+    );
+  }
 
-    try {
-      final result = await DownloadAccessService.downloadBytesWithAccess(
-        documentId: document.id,
-      );
-      if (result['success'] == true) {
-        final directory = await getApplicationDocumentsDirectory();
-        final filePath = '${directory.path}/${document.name}';
-        final file = File(filePath);
-        await file.writeAsBytes((result['bytes'] as List<int>));
+  Widget _title(String text, {double size = 15}) => Text(
+    text,
+    maxLines: 1,
+    overflow: TextOverflow.ellipsis,
+    style: TextStyle(fontSize: size, fontWeight: FontWeight.w600, color: _ink),
+  );
 
-        if (!mounted) return;
-        await DownloadFeedback.showDownloadedDialog(
-          context,
-          filename: document.name,
-          filePath: filePath,
-        );
-      } else if (result['requiresApproval'] == true) {
-        final reqService = DownloadRequestsService();
-        final reqResult = await reqService.createRequest(
-          documentId: document.id,
-          reason: 'Need offline copy',
-        );
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              reqResult['success'] == true
-                  ? 'Download request sent for approval'
-                  : (reqResult['message'] ?? 'Download request failed'),
+  Widget _subtitle(String text, {bool calendar = false, double size = 12.5}) {
+    final label = Text(
+      text,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(fontSize: size, color: _muted),
+    );
+    if (!calendar) return label;
+    return Row(
+      children: [
+        Icon(Icons.calendar_today_outlined, size: size, color: _muted),
+        const SizedBox(width: 4),
+        Expanded(child: label),
+      ],
+    );
+  }
+
+  /// List view row: icon · name over subtitle · 3-dot menu.
+  Widget _listCard({
+    required Widget leading,
+    required String title,
+    required Widget subtitle,
+    required Widget menu,
+    required VoidCallback onTap,
+  }) {
+    return _flatCard(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
+        child: Row(
+          children: [
+            leading,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [_title(title), const SizedBox(height: 4), subtitle],
+              ),
             ),
-            backgroundColor:
-                reqResult['success'] == true ? Colors.orange : Colors.red,
-          ),
-        );
-      } else {
-        throw Exception(result['error'] ?? 'Download failed');
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Download failed: $e'),
-          backgroundColor: Colors.red,
+            menu,
+          ],
         ),
-      );
-    }
-  }
-
-  Future<void> _showShareDialog(Document document) async {
-    if (!ApiService.isConnected) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Cannot share while offline'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-
-    await ShareAccessSheet.showForDocument(
-      context: context,
-      documentId: document.id,
-      documentName: document.name,
+      ),
     );
   }
+
+  /// Grid tile: icon and menu on top, name and subtitle underneath.
+  Widget _gridCard({
+    required Widget leading,
+    required String title,
+    required Widget subtitle,
+    required Widget menu,
+    required VoidCallback onTap,
+    required bool dense,
+  }) {
+    return _flatCard(
+      onTap: onTap,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(dense ? 10 : 12, dense ? 10 : 12, 2, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [leading, const Spacer(), menu],
+            ),
+            const Spacer(),
+            _title(title, size: dense ? 12.5 : 14),
+            const SizedBox(height: 3),
+            subtitle,
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFolderCard(FavoriteItem folder, {bool? dense}) {
+    final menu = _menu((action) => _onFolderAction(folder, action));
+    final name = _folderName(folder);
+    if (dense == null) {
+      return _listCard(
+        leading: _folderIcon(),
+        title: name,
+        subtitle: _subtitle(_folderSubtitle(folder)),
+        menu: menu,
+        onTap: () => _openFolder(folder),
+      );
+    }
+    return _gridCard(
+      leading: _folderIcon(),
+      title: name,
+      subtitle: _subtitle(_folderSubtitle(folder), size: dense ? 10.5 : 11.5),
+      menu: menu,
+      onTap: () => _openFolder(folder),
+      dense: dense,
+    );
+  }
+
+  Widget _buildDocumentCard(FavoriteEntry entry, {bool? dense}) {
+    final doc = entry.document;
+    final menu = _menu((action) => _onDocumentAction(entry, action));
+    void open() =>
+        DocumentOpenerService().openPreviewDialog(context: context, document: doc);
+    if (dense == null) {
+      return _listCard(
+        leading: _documentIconBox(doc),
+        title: _displayName(entry),
+        subtitle: _subtitle(_documentSubtitle(doc), calendar: true),
+        menu: menu,
+        onTap: open,
+      );
+    }
+    return _gridCard(
+      leading: _documentIconBox(doc),
+      title: _displayName(entry),
+      subtitle: _subtitle(
+        _documentSubtitle(doc),
+        calendar: true,
+        size: dense ? 10.5 : 11.5,
+      ),
+      menu: menu,
+      onTap: open,
+      dense: dense,
+    );
+  }
+
+  /// Lays items out as a list (10px apart) or a 2x2 / 3x3 grid.
+  Widget _buildItems<T>(
+    List<T> items,
+    Widget Function(T item, {bool? dense}) builder,
+  ) {
+    final isGrid = _currentViewMode == AppViewMode.grid2x2 ||
+        _currentViewMode == AppViewMode.grid3x3;
+    if (!isGrid) {
+      return Column(
+        children: [
+          for (int i = 0; i < items.length; i++)
+            Padding(
+              padding: EdgeInsets.only(top: i == 0 ? 0 : 10),
+              child: builder(items[i]),
+            ),
+        ],
+      );
+    }
+    final dense = _currentViewMode == AppViewMode.grid3x3;
+    return GridView.builder(
+      shrinkWrap: true,
+      padding: EdgeInsets.zero,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: items.length,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: dense ? 3 : 2,
+        crossAxisSpacing: 10,
+        mainAxisSpacing: 10,
+        mainAxisExtent: dense ? 112 : 124,
+      ),
+      itemBuilder: (context, index) => builder(items[index], dense: dense),
+    );
+  }
+
+  // ── Page sections ─────────────────────────────────────────────────────────
+  Widget _emptyNote(String text) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 24),
+    child: Center(child: Text(text, style: const TextStyle(color: _muted))),
+  );
 
   Widget _buildFavoritesContent() {
-    switch (_currentViewMode) {
-      case AppViewMode.list:
-      case AppViewMode.detailed:
-        return ListView.builder(
-          padding: const EdgeInsets.only(top: 8, bottom: 8),
-          itemCount: _documents.length,
-          itemBuilder: (context, index) => _buildFavoriteCard(_documents[index]),
-        );
-      case AppViewMode.compact:
-        return ListView.builder(
-          padding: const EdgeInsets.only(top: 8, bottom: 8),
-          itemCount: _documents.length,
-          itemBuilder: (context, index) =>
-              _buildFavoriteCompactItem(_documents[index], index),
-        );
-      case AppViewMode.grid2x2:
-      case AppViewMode.grid3x3:
-        final crossAxisCount = _currentViewMode == AppViewMode.grid3x3 ? 3 : 2;
-        final spacing = _currentViewMode == AppViewMode.grid3x3 ? 8.0 : 12.0;
-        final aspect = _currentViewMode == AppViewMode.grid3x3 ? 0.90 : 0.96;
-        return GridView.builder(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: crossAxisCount,
-            crossAxisSpacing: spacing,
-            mainAxisSpacing: spacing,
-            childAspectRatio: aspect,
+    final documents = _visibleDocuments;
+    final folders = _visibleFolders;
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      children: [
+        _buildFavoritesSearch(),
+        const SizedBox(height: 18),
+        SectionPanel(
+          margin: EdgeInsets.zero,
+          header: _buildSectionHeader(
+            'Folders',
+            trailing: folders.isEmpty ? null : _moreFilesButton(),
           ),
-          itemCount: _documents.length,
-          itemBuilder: (context, index) =>
-              _buildFavoriteGridItem(_documents[index], index),
-        );
-    }
-  }
-
-  Widget _buildFavoriteCompactItem(FavoriteEntry entry, int index) {
-    final doc = entry.document;
-    final name = _displayName(entry);
-    final type = (doc.type.isNotEmpty ? doc.type : doc.fileType).toUpperCase();
-    final icon = _getDocumentIcon(type);
-    final color = _getDocumentColor(type);
-
-    return ListTile(
-      dense: true,
-      visualDensity: const VisualDensity(vertical: -2),
-      leading: Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          color: color.withAlpha(18),
-          borderRadius: BorderRadius.circular(10),
+          child: folders.isEmpty
+              ? _emptyNote('No favourite folders yet')
+              : _buildItems<FavoriteItem>(folders, _buildFolderCard),
         ),
-        child: Icon(icon, color: color, size: 20),
-      ),
-      title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: Text(type, maxLines: 1, overflow: TextOverflow.ellipsis),
-      trailing: IconButton(
-        icon: const Icon(Icons.more_vert),
-        onPressed: () => _showDocumentActions(entry),
-      ),
-      onTap: () => DocumentOpenerService()
-          .openPreviewDialog(context: context, document: doc),
+        const SizedBox(height: 16),
+        SectionPanel(
+          margin: EdgeInsets.zero,
+          header: _buildSectionHeader('Documents', trailing: _fileTypeButton()),
+          child: documents.isEmpty
+              ? _emptyNote('No favourite documents yet')
+              : _buildItems<FavoriteEntry>(documents, _buildDocumentCard),
+        ),
+      ],
     );
   }
 
-  Widget _buildFavoriteGridItem(FavoriteEntry entry, int index) {
-    final doc = entry.document;
-    final name = _displayName(entry);
-    final type = (doc.type.isNotEmpty ? doc.type : doc.fileType).toUpperCase();
-    final icon = _getDocumentIcon(type);
-    final color = _getDocumentColor(type);
+  /// Document ids from the last AI search, in relevance order; null when the
+  /// list is filtered by plain text instead.
+  List<String>? _aiResultIds;
+  bool _aiSearching = false;
 
-    return Card(
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () => DocumentOpenerService()
-            .openPreviewDialog(context: context, document: doc),
-        onLongPress: () => _showDocumentActions(entry),
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: color.withAlpha(18),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(icon, color: color),
-                  ),
-                  const Icon(Icons.chevron_right, color: Colors.black38),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                name,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-              ),
-              const Spacer(),
-              Text(
-                type,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Colors.grey.shade700,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
+  /// File Type dropdown choice ('All', 'PDF', 'PPT', 'Docs', ...).
+  String _docTypeFilter = 'All';
+
+  void _snack(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  /// AI assistant search (POST /search/semantic) over everything I can see,
+  /// narrowed to my favourite documents. Folders still match by name.
+  Future<void> _handleAiSearch() async {
+    final query = _searchController.text.trim();
+    if (query.isEmpty) {
+      _snack('Enter a search query first.');
+      return;
+    }
+    FocusScope.of(context).unfocus();
+    setState(() => _aiSearching = true);
+    final result = await MyDocumentsService.semanticSearch(
+      query: query,
+      scope: 'all',
+      limit: 50,
+    );
+    if (!mounted) return;
+    final results = result['results'];
+    setState(() {
+      _aiSearching = false;
+      _aiResultIds = result['success'] == true && results is List
+          ? results.map((r) => r['documentId'].toString()).toList()
+          : null;
+    });
+    if (result['success'] != true) {
+      _snack('${result['error'] ?? 'AI search failed'}. Showing name matches.');
+    }
+  }
+
+  Widget _buildFavoritesSearch() {
+    return Row(
+      children: [
+        Expanded(
+          child: PillSearchField(
+            controller: _searchController,
+            hint: 'Search favourites...',
+            flat: true,
+            loading: _aiSearching,
+            onChanged: (_) => setState(() => _aiResultIds = null),
+            onClear: () {
+              _searchController.clear();
+              setState(() => _aiResultIds = null);
+            },
+            onSubmitted: (_) => _handleAiSearch(),
+            trailing: AiSparkleButton(onTap: _handleAiSearch),
           ),
         ),
+        const SizedBox(width: 10),
+        LayoutCapsule(
+          value: _currentViewMode,
+          activeColor: _accent,
+          onChanged: (mode) => setState(() => _currentViewMode = mode),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSectionHeader(String title, {Widget? trailing}) {
+    return Row(
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: _ink,
+          ),
+        ),
+        const Spacer(),
+        if (trailing != null) trailing,
+      ],
+    );
+  }
+
+  Widget _moreFilesButton() {
+    return TextButton(
+      onPressed: () {},
+      style: TextButton.styleFrom(
+        foregroundColor: _accent,
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        minimumSize: const Size(0, 32),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'More Files',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+          ),
+          Icon(Icons.chevron_right_rounded, size: 18),
+        ],
+      ),
+    );
+  }
+
+  /// Same pill and menu as the Workspace Documents section; counts are for
+  /// all favourite documents.
+  Widget _fileTypeButton() {
+    return FileTypeDropdown(
+      value: _docTypeFilter,
+      onChanged: (v) => setState(() => _docTypeFilter = v),
+      options: fileTypeOptionsFor([for (final e in _documents) e.document]),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final body = _isLoading
+        ? const Center(child: CircularProgressIndicator())
+        : RefreshIndicator(onRefresh: _load, child: _buildFavoritesContent());
+    if (widget.embedded) {
+      return ColoredBox(
+        color: const Color(0xFFF4F9FF),
+        child: ResponsivePage(padding: EdgeInsets.zero, child: body),
+      );
+    }
     return Scaffold(
-        backgroundColor: Colors.grey.shade200,
-
+      // Same light blue as My Files and Shared.
+      backgroundColor: const Color(0xFFF4F9FF),
       appBar: AppBar(
-        backgroundColor: Colors.grey.shade200,
-        title:  Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Favorites',style: w700_18Poppins()),
-            height5,
-            Text("Documents you saved for quick access",style: w400_12Poppins(color: Colors.black54),),
-            height5,
-
-          ],
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        centerTitle: true,
+        title: const RuledTitle(
+          'Favourites',
+          style: TextStyle(
+            fontFamily: appFontFamily,
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: _ink,
+          ),
         ),
-        iconTheme: IconThemeData(color: Colors.black),
-        actions: [
-          ViewModePopupButton(
-            value: _currentViewMode,
-            iconColor: Colors.white,
-            onSelected: (mode) => setState(() => _currentViewMode = mode),
+        leadingWidth: 56,
+        leading: Padding(
+          padding: const EdgeInsets.only(left: 16),
+          child: Center(
+            child: Material(
+              color: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: const BorderSide(color: Color(0xFFE2E8F0)),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: () => Navigator.of(context).pop(),
+                child: const SizedBox(
+                  width: 40,
+                  height: 40,
+                  child: Icon(
+                    Icons.arrow_back_ios_new_rounded,
+                    size: 16,
+                    color: _ink,
+                  ),
+                ),
+              ),
+            ),
           ),
-          IconButton(
-            onPressed: _load,
-            icon: const Icon(Icons.refresh_rounded),
-          ),
-        ],
+        ),
+        actions: const [SizedBox(width: 56)],
       ),
-      body: ResponsivePage(
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : _documents.isEmpty
-                ? const Center(child: Text('No favorites'))
-                : RefreshIndicator(onRefresh: _load, child: _buildFavoritesContent()),
-      ),
+      body: ResponsivePage(padding: EdgeInsets.zero, child: body),
     );
   }
 }

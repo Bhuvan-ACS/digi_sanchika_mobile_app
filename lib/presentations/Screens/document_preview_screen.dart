@@ -5,8 +5,11 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:digi_sanchika/utils/app_theme.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdfx/pdfx.dart';
+import 'package:chewie/chewie.dart';
+import 'package:video_player/video_player.dart';
 
 import 'package:digi_sanchika/models/document.dart';
 import 'package:digi_sanchika/presentations/screens/document_open_options.dart';
@@ -47,6 +50,8 @@ class _DocumentPreviewScreenState extends State<DocumentPreviewScreen> {
   String _textContent = '';
   File? _binaryFile;
   List<List<String>> _csvRows = [];
+  VideoPlayerController? _videoController;
+  ChewieController? _chewie;
 
   void _dlog(String message) {
     if (!kDebugMode) return;
@@ -98,11 +103,103 @@ class _DocumentPreviewScreenState extends State<DocumentPreviewScreen> {
 
   @override
   void dispose() {
+    _chewie?.dispose();
+    _videoController?.dispose();
     _pdfController?.dispose();
     super.dispose();
   }
 
+  static const _videoExts = {'mp4', 'm4v', 'mov', 'webm', 'mkv', '3gp'};
+
+  bool get _isVideo {
+    final name = widget.document.name.toLowerCase();
+    final dot = name.lastIndexOf('.');
+    final ext = dot >= 0 ? name.substring(dot + 1) : '';
+    final type = widget.fileType.toLowerCase().replaceAll('.', '');
+    return _videoExts.contains(ext) ||
+        _videoExts.contains(type) ||
+        type.startsWith('video');
+  }
+
+  /// Streams the video from its signed URL instead of downloading it whole.
+  Future<void> _loadVideo() async {
+    try {
+      String? url;
+      final version = widget.versionNumber?.trim() ?? '';
+      if (version.isNotEmpty) {
+        final asset = await VersionsService().getViewAsset(
+          documentId: widget.document.id,
+          version: version,
+          original: widget.versionOriginal,
+        );
+        url = asset?.url;
+      } else {
+        final resp = await ApiClient.instance.dio.get(
+          '/documents/${widget.document.id}/view-url',
+          options: Options(
+            validateStatus: (s) => s != null && s < 600,
+            headers: {'Accept': 'application/json'},
+          ),
+        );
+        if (resp.statusCode == 200 && resp.data is Map) {
+          url = (resp.data as Map)['url']?.toString();
+        }
+      }
+
+      if (url == null || url.isEmpty) {
+        _errorMessage = 'Video link is not available.';
+        if (mounted) setState(() => _isLoading = false);
+        return;
+      }
+
+      final controller = VideoPlayerController.networkUrl(Uri.parse(url));
+      await controller.initialize();
+      final chewie = ChewieController(
+        videoPlayerController: controller,
+        autoPlay: true,
+        looping: false,
+        allowFullScreen: true,
+        allowMuting: true,
+        aspectRatio: controller.value.aspectRatio == 0
+            ? 16 / 9
+            : controller.value.aspectRatio,
+        errorBuilder: (context, message) => Center(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Text(
+              'This video could not be played.\n$message',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white),
+            ),
+          ),
+        ),
+      );
+      if (!mounted) {
+        chewie.dispose();
+        controller.dispose();
+        return;
+      }
+      setState(() {
+        _videoController = controller;
+        _chewie = chewie;
+        _isLoading = false;
+      });
+    } catch (e) {
+      _dlog('video load failed: $e');
+      if (!mounted) return;
+      setState(() {
+        _errorMessage =
+            'This video could not be played. Try Open with another app.';
+        _isLoading = false;
+      });
+    }
+  }
+
   Future<void> _loadDocument() async {
+    if (_isVideo) {
+      await _loadVideo();
+      return;
+    }
     try {
       final loaded = await _tryLoadFromContent();
       if (!loaded && mounted) {
@@ -668,7 +765,7 @@ class _DocumentPreviewScreenState extends State<DocumentPreviewScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.document.name, overflow: TextOverflow.ellipsis),
-        backgroundColor: const Color.fromARGB(255, 43, 65, 189),
+        backgroundColor: AppColors.header,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
@@ -753,11 +850,20 @@ class _DocumentPreviewScreenState extends State<DocumentPreviewScreen> {
   }
 
   Widget _buildPreviewContent() {
+    if (_chewie != null) return _buildVideoViewer();
     if (_pdfController != null) return _buildPdfViewer();
     if (_binaryFile != null) return _buildImageViewer();
     if (_csvRows.isNotEmpty) return _buildCsvViewer();
     if (_textContent.isNotEmpty) return _buildTextViewer();
     return _buildUnsupportedViewer();
+  }
+
+  Widget _buildVideoViewer() {
+    return Container(
+      color: Colors.black,
+      alignment: Alignment.center,
+      child: Chewie(controller: _chewie!),
+    );
   }
 
   Widget _buildPdfViewer() {

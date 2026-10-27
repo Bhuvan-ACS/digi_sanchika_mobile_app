@@ -44,29 +44,102 @@ class ShareUser {
 class FolderService {
   static Dio get _dio => ApiClient.instance.dio;
 
+  /// Loads the documents and sub-folders that belong to [folderId].
+  ///
+  /// Distinguishes three outcomes so the UI never shows "empty" for a folder
+  /// that simply failed to load:
+  ///  * `success: true`  - the folder was read (possibly confirmed empty)
+  ///  * `success: false` - the request failed; `error` explains why
   static Future<Map<String, dynamic>> getFolderContents(String folderId) async {
+    String? error;
     try {
       final response = await _dio.get(
         '/documents',
         queryParameters: {'folderId': folderId},
       );
       if (response.statusCode == 200) {
-        final data = response.data;
-        final documents = _mapDocuments(data['documents'] ?? data['items'] ?? []);
-        final subfolders = _mapFolders(data['folders'] ?? [], folderId);
-        return {
-          'success': true,
-          'documents': documents,
-          'subfolders': subfolders,
-          'folderName': data['folder_name'] ?? 'Folder',
-        };
+        final parsed = _parseContents(response.data, folderId);
+        final docs = parsed['documents'] as List<Document>;
+        final folders = parsed['subfolders'] as List<Folder>;
+        if (docs.isNotEmpty || folders.isNotEmpty) {
+          return {'success': true, ...parsed};
+        }
+        // Empty answer: confirm it is genuinely empty and not a backend that
+        // ignored/renamed the `folderId` filter.
+        final confirmed = await _confirmEmptyFolder(folderId);
+        return {'success': true, ...(confirmed ?? parsed)};
       }
+      error = 'Failed to load folder contents (${response.statusCode})';
+    } on DioException catch (e) {
+      final code = e.response?.statusCode;
+      error = code != null
+          ? 'Failed to load folder contents ($code)'
+          : 'Could not reach the server. Check your connection and retry.';
+      if (kDebugMode) print('Error getting folder contents: $e');
     } catch (e) {
-      if (kDebugMode) {
-        print('Error getting folder contents: $e');
-      }
+      error = 'Failed to load folder contents';
+      if (kDebugMode) print('Error getting folder contents: $e');
     }
-    return {'success': false, 'error': 'Failed to load folder contents'};
+    return {'success': false, 'error': error};
+  }
+
+  /// Accepts every response shape the backend has been seen to return.
+  static Map<String, dynamic> _parseContents(dynamic data, String folderId) {
+    List<dynamic> docsRaw = [];
+    List<dynamic> foldersRaw = [];
+    if (data is Map) {
+      final d = data['documents'] ?? data['items'] ?? data['data'];
+      if (d is List) {
+        docsRaw = d;
+      } else if (d is Map) {
+        docsRaw = (d['documents'] ?? d['items'] ?? []) as List<dynamic>;
+        foldersRaw = (d['folders'] ?? []) as List<dynamic>;
+      }
+      final f = data['folders'];
+      if (f is List) foldersRaw = f;
+    } else if (data is List) {
+      docsRaw = data;
+    }
+    return {
+      'documents': _mapDocuments(docsRaw),
+      'subfolders': _mapFolders(foldersRaw, folderId),
+      'folderName': data is Map ? (data['folder_name'] ?? 'Folder') : 'Folder',
+    };
+  }
+
+  /// Fallback used only when the filtered call returned nothing: re-read the
+  /// list and keep the entries whose parent is [folderId].
+  static Future<Map<String, dynamic>?> _confirmEmptyFolder(
+    String folderId,
+  ) async {
+    try {
+      final response = await _dio.get('/documents');
+      if (response.statusCode != 200) return null;
+      final all = _parseContents(response.data, folderId);
+      final data = response.data;
+
+      final docs = (all['documents'] as List<Document>)
+          .where((d) => d.folderId == folderId)
+          .toList();
+
+      final rawFolders = data is Map && data['folders'] is List
+          ? (data['folders'] as List)
+          : const [];
+      final childFolders = rawFolders.where((f) {
+        if (f is! Map) return false;
+        final parent = (f['parent_id'] ?? f['parentId'])?.toString();
+        return parent == folderId;
+      }).toList();
+
+      if (docs.isEmpty && childFolders.isEmpty) return null;
+      return {
+        'documents': docs,
+        'subfolders': _mapFolders(childFolders, folderId),
+        'folderName': 'Folder',
+      };
+    } catch (_) {
+      return null;
+    }
   }
 
   static Future<List<ShareUser>> getUsersForSharing() async {

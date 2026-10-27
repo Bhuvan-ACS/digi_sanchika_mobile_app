@@ -1,6 +1,8 @@
 // screens/shared_folder_screen.dart
 import 'dart:convert';
 import 'package:digi_sanchika/utils/app_fonts.dart';
+import 'package:digi_sanchika/widgets/file_type_icon.dart';
+import 'package:digi_sanchika/widgets/favorite_menu.dart';
 import 'package:flutter/material.dart';
 import 'package:digi_sanchika/services/shared_browse_service.dart';
 import 'package:digi_sanchika/models/document.dart';
@@ -16,6 +18,7 @@ import 'package:digi_sanchika/services/folder_download_service.dart';
 import 'package:digi_sanchika/widgets/download_feedback.dart';
 import 'package:digi_sanchika/widgets/version_history_dialog.dart';
 import 'package:digi_sanchika/widgets/dismiss_keyboard.dart';
+import 'package:digi_sanchika/widgets/responsive_document_gallery.dart';
 
 // Add enum for layout modes
 enum SharedFolderViewMode { list, grid2x2, grid3x3, compact, detailed }
@@ -39,7 +42,8 @@ class SharedFolderScreen extends StatefulWidget {
 class _SharedFolderScreenState extends State<SharedFolderScreen> {
   List<Document> _documents = [];
   List<Map<String, dynamic>> _subfolders = [];
-  final Map<String, int> _subfolderItemCounts = {}; // folderId -> immediate child count
+  final Map<String, int> _subfolderItemCounts =
+      {}; // folderId -> immediate child count
   Map<String, dynamic>? _shareMeta;
 
   bool _isLoading = true;
@@ -132,8 +136,6 @@ class _SharedFolderScreenState extends State<SharedFolderScreen> {
       ),
     );
   }
-
- 
 
   // ============ FILTERING ============
   List<Document> _filterDocuments() {
@@ -272,8 +274,6 @@ class _SharedFolderScreenState extends State<SharedFolderScreen> {
             filePath: filePath,
           );
           return;
-
-        
         } else {
           throw Exception('Failed to save file to disk');
         }
@@ -298,8 +298,6 @@ class _SharedFolderScreenState extends State<SharedFolderScreen> {
     }
     return Directory.current;
   }
-
- 
 
   void _showFileContent(List<int> fileBytes, String filename) {
     try {
@@ -411,7 +409,9 @@ class _SharedFolderScreenState extends State<SharedFolderScreen> {
         from(folder['shared_by_name']) ??
         from(_shareMeta?['shared_by']) ??
         from(_shareMeta?['sharedBy']) ??
-        (widget.userName?.trim().isNotEmpty == true ? widget.userName!.trim() : 'Unknown');
+        (widget.userName?.trim().isNotEmpty == true
+            ? widget.userName!.trim()
+            : 'Unknown');
   }
 
   String _displayOwner(Document document) {
@@ -475,7 +475,9 @@ class _SharedFolderScreenState extends State<SharedFolderScreen> {
     }
   }
 
-  Future<void> _loadSubfolderItemCounts(List<Map<String, dynamic>> folders) async {
+  Future<void> _loadSubfolderItemCounts(
+    List<Map<String, dynamic>> folders,
+  ) async {
     // Fetch immediate child counts for each folder (documents + subfolders).
     for (final folder in folders) {
       final id = folder['id']?.toString();
@@ -564,7 +566,42 @@ class _SharedFolderScreenState extends State<SharedFolderScreen> {
     }
   }
 
-  void _showDocumentActions(Document document) {
+  Future<void> _showDocumentActions(
+    Document document,
+    BuildContext anchorContext,
+  ) async {
+    final action = await showMenu<String>(
+      context: anchorContext,
+      position: _menuPosition(anchorContext),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      items: [
+        const PopupMenuItem(
+          value: 'properties',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.info_outline, color: Colors.blue),
+            title: Text('Properties'),
+          ),
+        ),
+        favoriteMenuItem(document.id),
+      ],
+    );
+    if (!mounted) return;
+    if (action == 'properties') {
+      _showDocumentDetails(document);
+    } else if (action == favoriteMenuValue) {
+      await toggleFavoriteWithFeedback(context, document.id);
+    }
+  }
+
+  RelativeRect _menuPosition(BuildContext anchorContext) {
+    final button = anchorContext.findRenderObject() as RenderBox;
+    final overlay = Overlay.of(anchorContext).context.findRenderObject() as RenderBox;
+    final rect = button.localToGlobal(Offset.zero, ancestor: overlay) & button.size;
+    return RelativeRect.fromRect(rect, Offset.zero & overlay.size);
+  }
+
+  void _showDocumentActionsBottomSheet(Document document) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -674,9 +711,7 @@ class _SharedFolderScreenState extends State<SharedFolderScreen> {
               children: [
                 const Icon(Icons.download, size: 18),
                 const SizedBox(width: 6),
-                Text(
-                  document.allowDownload ? 'Download' : 'Request Download',
-                ),
+                Text(document.allowDownload ? 'Download' : 'Request Download'),
               ],
             ),
           ),
@@ -700,7 +735,7 @@ class _SharedFolderScreenState extends State<SharedFolderScreen> {
       onTap: () => _handleDocumentDoubleTap(document),
       borderRadius: BorderRadius.circular(12),
       child: Card(
-        margin: const EdgeInsets.symmetric( vertical: 4),
+        margin: const EdgeInsets.symmetric(vertical: 4),
         elevation: 2,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         child: Padding(
@@ -717,7 +752,11 @@ class _SharedFolderScreenState extends State<SharedFolderScreen> {
                       color: color.withAlpha(10),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Icon(iconData, color: color, size: 32),
+                    child: FileTypeIcon.orElse(
+                      document.type,
+                      32,
+                      Icon(iconData, color: color, size: 32),
+                    ),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
@@ -740,13 +779,13 @@ class _SharedFolderScreenState extends State<SharedFolderScreen> {
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                   height5,
-                                     Text(
-                                                        'Type: ${document.type} • $formattedDate',
-                                                        style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey.shade600,
-                                                        ),
-                                                      ),
+                                  Text(
+                                    'Type: ${document.type} • $formattedDate',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
@@ -790,7 +829,7 @@ class _SharedFolderScreenState extends State<SharedFolderScreen> {
                             const SizedBox(width: 8),
                             IconButton(
                               onPressed: () =>
-                                  _showDocumentActions(document),
+                                  _showDocumentActions(document, context),
                               icon: Container(
                                 width: 36,
                                 height: 36,
@@ -809,7 +848,6 @@ class _SharedFolderScreenState extends State<SharedFolderScreen> {
                             ),
                           ],
                         ),
-                     
                       ],
                     ),
                   ),
@@ -989,7 +1027,22 @@ class _SharedFolderScreenState extends State<SharedFolderScreen> {
   }
 
   Widget _buildDocumentsContent(List<Document> documents) {
-    switch (_currentViewMode) {
+    final mode = switch (_currentViewMode) {
+      SharedFolderViewMode.grid2x2 => ResponsiveDocumentViewMode.grid2,
+      SharedFolderViewMode.grid3x3 => ResponsiveDocumentViewMode.grid3,
+      _ => ResponsiveDocumentViewMode.list,
+    };
+    return ResponsiveDocumentGallery(
+      documents: documents,
+      mode: mode,
+      shrinkWrap: true,
+      onView: _handleDocumentDoubleTap,
+      onOverflow: (document, anchorContext, _) =>
+          _showDocumentActions(document, anchorContext),
+      onVersions: _showDocumentVersions,
+      onDownload: _downloadDocument,
+    );
+    /* switch (_currentViewMode) {
       case SharedFolderViewMode.list:
         return ListView.builder(
           shrinkWrap: true,
@@ -1041,7 +1094,7 @@ class _SharedFolderScreenState extends State<SharedFolderScreen> {
           itemBuilder: (context, index) =>
               _buildDocumentDetailedItem(documents[index]),
         );
-    }
+    } */
   }
 
   Widget _buildDocumentGridItem(Document document, int columns) {
@@ -1177,7 +1230,11 @@ class _SharedFolderScreenState extends State<SharedFolderScreen> {
                       color: color.withAlpha(20),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: Icon(iconData, color: color, size: 24),
+                    child: FileTypeIcon.orElse(
+                      document.type,
+                      24,
+                      Icon(iconData, color: color, size: 24),
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -1290,7 +1347,8 @@ class _SharedFolderScreenState extends State<SharedFolderScreen> {
                     ),
                   ),
                   IconButton(
-                    onPressed: () => _showDocumentActions(document),
+                    onPressed: () =>
+                        _showDocumentActions(document, context),
                     icon: Container(
                       width: 32,
                       height: 32,
@@ -1595,7 +1653,11 @@ class _SharedFolderScreenState extends State<SharedFolderScreen> {
                   child: Icon(Icons.more_vert, color: Colors.grey, size: 20),
                 ),
               ),
-              const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.indigo),
+              const Icon(
+                Icons.arrow_forward_ios,
+                size: 16,
+                color: Colors.indigo,
+              ),
             ],
           ),
         ),
@@ -1890,193 +1952,188 @@ class _SharedFolderScreenState extends State<SharedFolderScreen> {
     );
   }
 
-  
-
   @override
   Widget build(BuildContext context) {
     final filteredDocs = _filterDocuments();
 
-    return DismissKeyboard(child: Scaffold(
-      appBar: AppBar(
-   backgroundColor: Colors.grey.shade100,
-   iconTheme: IconThemeData(color: Colors.black),
-        title: Column(
-          
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              widget.folderName,
-              style:w600_16Poppins(),
+    return DismissKeyboard(
+      child: Scaffold(
+        appBar: AppBar(
+          backgroundColor: Colors.grey.shade100,
+          iconTheme: IconThemeData(color: Colors.black),
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(widget.folderName, style: w600_16Poppins()),
+              if (widget.userName != null)
+                Text('Shared by: ${widget.userName}', style: w400_12Poppins()),
+            ],
+          ),
+          elevation: 0,
+          actions: [
+            IconButton(
+              onPressed: _loadSharedFolderContents,
+              icon: const Icon(Icons.refresh, color: Colors.white),
+              tooltip: 'Refresh',
             ),
-            if (widget.userName != null)
-              Text(
-                'Shared by: ${widget.userName}',
-                style: w400_12Poppins(),
-              ),
           ],
         ),
-        elevation: 0,
-        actions: [
-          IconButton(
-            onPressed: _loadSharedFolderContents,
-            icon: const Icon(Icons.refresh, color: Colors.white),
-            tooltip: 'Refresh',
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // Search and filters section
-          Container(
-            padding: const EdgeInsets.all(16),
-            color: Colors.grey.shade100,
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.grey.withAlpha(10),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: TextField(
-                          controller: _searchController,
-                          onChanged: (value) => setState(() {}),
-                          decoration: InputDecoration(
-                            hintText: 'Search in shared folder...',
-                            hintStyle: TextStyle(color: Colors.grey.shade600),
-                            prefixIcon: const Icon(
-                              Icons.search,
-                              color: Colors.indigo,
-                            ),
-                            suffixIcon: _searchController.text.isNotEmpty
-                                ? IconButton(
-                                    icon: const Icon(
-                                      Icons.clear,
-                                      color: Colors.grey,
-                                    ),
-                                    onPressed: _clearSearch,
-                                  )
-                                : null,
-                            filled: true,
-                            fillColor: Colors.white,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide.none,
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 12,
+        body: Column(
+          children: [
+            // Search and filters section
+            Container(
+              padding: const EdgeInsets.all(16),
+              color: Colors.grey.shade100,
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.grey.withAlpha(10),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: TextField(
+                            controller: _searchController,
+                            onChanged: (value) => setState(() {}),
+                            decoration: InputDecoration(
+                              hintText: 'Search in shared folder...',
+                              hintStyle: TextStyle(color: Colors.grey.shade600),
+                              prefixIcon: const Icon(
+                                Icons.search,
+                                color: Colors.indigo,
+                              ),
+                              suffixIcon: _searchController.text.isNotEmpty
+                                  ? IconButton(
+                                      icon: const Icon(
+                                        Icons.clear,
+                                        color: Colors.grey,
+                                      ),
+                                      onPressed: _clearSearch,
+                                    )
+                                  : null,
+                              filled: true,
+                              fillColor: Colors.white,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide.none,
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    _buildFileTypeFilter(),
-                    const SizedBox(width: 8),
-                    _buildLayoutSelector(),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Text(
-                      '${filteredDocs.length} document${filteredDocs.length == 1 ? '' : 's'}',
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                        fontSize: 13,
-                      ),
-                    ),
-                    _buildFileTypeBadge(),
-                    const Spacer(),
-                    if (_subfolders.isNotEmpty)
+                      const SizedBox(width: 8),
+                      _buildFileTypeFilter(),
+                      const SizedBox(width: 8),
+                      _buildLayoutSelector(),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
                       Text(
-                        '${_subfolders.length} folder${_subfolders.length == 1 ? '' : 's'}',
+                        '${filteredDocs.length} document${filteredDocs.length == 1 ? '' : 's'}',
                         style: TextStyle(
                           color: Colors.grey.shade600,
                           fontSize: 13,
                         ),
                       ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-
-          // Loading/Error/Content
-          Expanded(
-            child: _isLoading
-                ? _buildLoading()
-                : _hasError
-                ? _buildError()
-                : RefreshIndicator(
-                    onRefresh: _loadSharedFolderContents,
-                    color: Colors.indigo,
-                    child: SingleChildScrollView(
-                      child: Column(
-                        children: [
-                          if (_isDownloading) _buildDownloadingBanner(),
-                          _buildSubfoldersSection(),
-                          Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.insert_drive_file,
-                                      color: Colors.indigo,
-                                      size: 24,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    const Text(
-                                      'Shared Documents',
-                                      style: TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 2,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: Colors.indigo.shade100,
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: Text(
-                                        filteredDocs.length.toString(),
-                                        style: const TextStyle(fontSize: 12),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 16),
-                                filteredDocs.isEmpty
-                                    ? _buildEmptyState()
-                                    : _buildDocumentsContent(filteredDocs),
-                              ],
-                            ),
+                      _buildFileTypeBadge(),
+                      const Spacer(),
+                      if (_subfolders.isNotEmpty)
+                        Text(
+                          '${_subfolders.length} folder${_subfolders.length == 1 ? '' : 's'}',
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 13,
                           ),
-                        ],
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            // Loading/Error/Content
+            Expanded(
+              child: _isLoading
+                  ? _buildLoading()
+                  : _hasError
+                  ? _buildError()
+                  : RefreshIndicator(
+                      onRefresh: _loadSharedFolderContents,
+                      color: Colors.indigo,
+                      child: SingleChildScrollView(
+                        child: Column(
+                          children: [
+                            if (_isDownloading) _buildDownloadingBanner(),
+                            _buildSubfoldersSection(),
+                            Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.insert_drive_file,
+                                        color: Colors.indigo,
+                                        size: 24,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      const Text(
+                                        'Shared Documents',
+                                        style: TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 2,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.indigo.shade100,
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          filteredDocs.length.toString(),
+                                          style: const TextStyle(fontSize: 12),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 16),
+                                  filteredDocs.isEmpty
+                                      ? _buildEmptyState()
+                                      : _buildDocumentsContent(filteredDocs),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
-    ));
+    );
   }
 
   Widget _buildEmptyState() {

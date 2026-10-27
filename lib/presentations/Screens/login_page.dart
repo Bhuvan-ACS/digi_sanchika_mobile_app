@@ -10,9 +10,9 @@ import 'package:digi_sanchika/services/push_notifications_service.dart';
 import 'package:digi_sanchika/widgets/permissions_modal.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:digi_sanchika/utils/responsive_helper.dart';
+import 'package:digi_sanchika/theme/ui_theme.dart';
+import 'package:digi_sanchika/widgets/auth_widgets.dart';
 
 // ─── Theme constants ──────────────────────────────────────────────────────────
 const _kPrimary = Color(0xFF2D4EE8);
@@ -322,420 +322,161 @@ class _LoginPageState extends State<LoginPage> {
   // ── Build ──────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    final r = ResponsiveHelper.of(context);
-
-    return Scaffold(
-      backgroundColor: _kDeepBlue,
-      body: GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
-        child: Column(
-          children: [
-            // ── Blue hero section ──────────────────────────────────────────
-            _buildHero(r),
-
-            // ── White form card ────────────────────────────────────────────
-            Expanded(
-              child: Container(
-                   decoration: const BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.only(topLeft: Radius.circular(20), topRight: Radius.circular(20)),
-                    ),
-                child: SingleChildScrollView(
-                  child: _buildFormCard(r),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ── Blue top section ───────────────────────────────────────────────────────
-  Widget _buildHero(ResponsiveHelper r) {
-    return Container(
-      width: double.infinity,
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [_kPrimary, _kLightBlue, _kDeepBlue],
-        ),
-      ),
-      child: Stack(
-        children: [
-          // Decorative circles
-          const Positioned(top: -20, right: -50, child: _Circle(size: 200)),
-          const Positioned(top: 40, right: 60, child: _Circle(size: 100)),
-
-          // Content
-          SafeArea(
-            bottom: false,
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(r.p(28), r.p(24), r.p(28), r.p(36)),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // App icon
-                  GestureDetector(
-                    onLongPress: () => Navigator.of(context).pushNamed('/push-debug'),
-                    child: Container(
-                      width: r.p(52),
-                      height: r.p(52),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(r.p(14)),
-                        border: Border.all(color: Colors.white.withOpacity(0.25), width: 1),
-                      ),
-                      child: Center(
-                        child: Image.asset(
-                          'assets/images/digi-sanchika-logo.png',
-                          width: r.p(30),
-                          height: r.p(30),
-                          fit: BoxFit.contain,
-                          errorBuilder: (_, __, ___) => Icon(
-                            Icons.article_outlined,
-                            color: Colors.white,
-                            size: r.p(26),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  SizedBox(height: r.p(20)),
-
-                  Text(
-                    'Welcome back',
-                    style: TextStyle(
-                      fontSize: r.sp(28),
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                      letterSpacing: -0.5,
-                    ),
-                  ),
-
-                  SizedBox(height: r.p(6)),
-
-                  Text(
-                    'Sign in to access your documents,\nrequests and shared workspace.',
-                    style: TextStyle(
-                      fontSize: r.sp(14),
-                      color: Colors.white.withOpacity(0.8),
-                      height: 1.2,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+    return AuthPage(
+      showBack: false,
+      maxSheetFraction: 0.66,
+      children: [
+        // Long-press the title for the push-notification debug screen.
+        GestureDetector(
+          onLongPress: () => Navigator.of(context).pushNamed('/push-debug'),
+          child: const AuthTitle(
+            title: 'Welcome back',
+            subtitle:
+                'Sign in to access your documents, requests and shared workspace.',
           ),
-        ],
-      ),
-    );
-  }
-
-  // ── White form card ────────────────────────────────────────────────────────
-  Widget _buildFormCard(ResponsiveHelper r) {
-    return Container(
-      // width: double.infinity,
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.only(topLeft: Radius.circular(10), topRight: Radius.circular(10)),
-      ),
-      padding: EdgeInsets.fromLTRB(r.p(24), r.p(28), r.p(24), r.p(24)),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: r.isMobile ? double.infinity : 520),
-        child: AutofillGroup(
+        ),
+        const SizedBox(height: 28),
+        AutofillGroup(
           child: Form(
             key: _formKey,
-            child: Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  
-                  // ── Work Email field ───────────────────────────────────────
-                  _fieldLabel(r, 'Work Email'),
-                  SizedBox(height: r.p(6)),
-                  _buildTextField(
-                    r: r,
-                    controller: _employeeIdController,
-                    focusNode: _employeeFocus,
-                    hintText: 'Enter email or employee ID',
-                    prefixIcon: Icons.email_outlined,
-                    keyboardType: TextInputType.emailAddress,
-                    autofillHints: const [AutofillHints.username, AutofillHints.email],
-                    textInputAction: TextInputAction.next,
-                    onFieldSubmitted: (_) => _passwordFocus.requestFocus(),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) return 'Please enter your identifier';
-                      if (value.contains('@') && !RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(value)) {
-                        return 'Please enter a valid email address';
-                      }
-                      return null;
-                    },
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── Work Email field ─────────────────────────────────────
+                TextFormField(
+                  controller: _employeeIdController,
+                  focusNode: _employeeFocus,
+                  enabled: !_isLoading,
+                  keyboardType: TextInputType.emailAddress,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  autofillHints: const [
+                    AutofillHints.username,
+                    AutofillHints.email,
+                  ],
+                  textInputAction: TextInputAction.next,
+                  onFieldSubmitted: (_) => _passwordFocus.requestFocus(),
+                  onTapOutside: (_) =>
+                      FocusManager.instance.primaryFocus?.unfocus(),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter your identifier';
+                    }
+                    if (value.contains('@') &&
+                        !RegExp(
+                          r'^[^\s@]+@[^\s@]+\.[^\s@]+$',
+                        ).hasMatch(value)) {
+                      return 'Please enter a valid email address';
+                    }
+                    return null;
+                  },
+                  decoration: authInputDecoration(
+                    label: 'Work Email',
+                    hint: 'Enter email or employee ID',
+                    icon: Icons.mail_outline_rounded,
                   ),
-              
-                  SizedBox(height: r.p(20)),
-              
-                  // ── Password field ─────────────────────────────────────────
-                  _fieldLabel(r, 'Password'),
-                  SizedBox(height: r.p(6)),
-                  _buildTextField(
-                    r: r,
-                    controller: _passwordController,
-                    focusNode: _passwordFocus,
-                    hintText: 'Enter your password',
-                    prefixIcon: Icons.lock_outline,
-                    obscureText: !_isPasswordVisible,
-                    autofillHints: const [AutofillHints.password],
-                    textInputAction: TextInputAction.done,
-                    onFieldSubmitted: (_) => _attemptLogin(),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) return 'Please enter your password';
-                      return null;
-                    },
-                    suffixIcon: IconButton(
+                ),
+                const SizedBox(height: 16),
+
+                // ── Password field ───────────────────────────────────────
+                TextFormField(
+                  controller: _passwordController,
+                  focusNode: _passwordFocus,
+                  enabled: !_isLoading,
+                  obscureText: !_isPasswordVisible,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  autofillHints: const [AutofillHints.password],
+                  textInputAction: TextInputAction.done,
+                  onFieldSubmitted: (_) => _attemptLogin(),
+                  onTapOutside: (_) =>
+                      FocusManager.instance.primaryFocus?.unfocus(),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter your password';
+                    }
+                    return null;
+                  },
+                  decoration: authInputDecoration(
+                    label: 'Password',
+                    hint: 'Enter your password',
+                    icon: Icons.lock_outline_rounded,
+                    suffix: IconButton(
+                      onPressed: () => setState(
+                        () => _isPasswordVisible = !_isPasswordVisible,
+                      ),
                       icon: Icon(
-                        _isPasswordVisible ? Icons.visibility_outlined : Icons.visibility_off_outlined,
-                        color: Colors.grey.shade400,
-                        size: r.sp(20),
+                        _isPasswordVisible
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                        color: UiColors.muted,
                       ),
-                      onPressed: () => setState(() => _isPasswordVisible = !_isPasswordVisible),
                     ),
                   ),
-              
-                  SizedBox(height: r.p(14)),
-              
-                  // ── Remember me + Forgot password ──────────────────────────
-                  Row(
-                    children: [
-                      SizedBox(
-                        width: r.p(20),
-                        height: r.p(20),
-                        child: Checkbox(
-                          value: _rememberMe,
-                          onChanged: (v) => setState(() => _rememberMe = v ?? false),
-                          activeColor: _kPrimary,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                const SizedBox(height: 10),
+
+                // ── Remember me + Forgot password ────────────────────────
+                Row(
+                  children: [
+                    SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: Checkbox(
+                        value: _rememberMe,
+                        onChanged: (v) =>
+                            setState(() => _rememberMe = v ?? false),
+                        activeColor: UiColors.royalBlue,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4),
                         ),
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
-                      SizedBox(width: r.p(8)),
-                      Text('Remember me', style: TextStyle(fontSize: r.sp(13), color: const Color(0xFF444466))),
-                      const Spacer(),
-                      GestureDetector(
-                        onTap: _isLoading ? null : _showForgotPasswordDialog,
-                        child: Text(
-                          'Forgot password?',
-                          style: TextStyle(
-                            fontSize: r.sp(13),
-                            color: _kPrimary,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-              
-                  SizedBox(height: r.p(28)),
-              
-                  // ── Sign In button ─────────────────────────────────────────
-                  SizedBox(
-                    width: double.infinity,
-                    height: r.p(54),
-                    child: ElevatedButton(
-                      onPressed: (_isLoading || _isInCooldown) ? null : _attemptLogin,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _kPrimary,
-                        foregroundColor: Colors.white,
-                        disabledBackgroundColor: _kPrimary.withOpacity(0.5),
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(r.p(14))),
-                      ),
-                      child: _isLoading
-                          ? SizedBox(
-                              width: r.sp(22),
-                              height: r.sp(22),
-                              child: const CircularProgressIndicator(
-                                strokeWidth: 2.5,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                              ),
-                            )
-                          : Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  _isInCooldown
-                                      ? () {
-                                          final s = _cooldownSecondsRemaining;
-                                          return 'Try again in ${(s ~/ 60).toString().padLeft(2, '0')}:${(s % 60).toString().padLeft(2, '0')}';
-                                        }()
-                                      : 'Sign In',
-                                  style: TextStyle(fontSize: r.sp(16), fontWeight: FontWeight.w700),
-                                ),
-                                if (!_isInCooldown) ...[
-                                  SizedBox(width: r.p(8)),
-                                  Icon(Icons.arrow_forward, size: r.sp(18)),
-                                ],
-                              ],
-                            ),
                     ),
-                  ),
-              
-                  SizedBox(height: r.p(24)),
-              
-                  // // ── Divider ────────────────────────────────────────────────
-                  // Row(children: [
-                  //   Expanded(child: Divider(color: Colors.grey.shade200, thickness: 1)),
-                  //   Padding(
-                  //     padding: EdgeInsets.symmetric(horizontal: r.p(12)),
-                  //     child: Text('or continue with', style: TextStyle(fontSize: r.sp(12), color: Colors.grey.shade400)),
-                  //   ),
-                  //   Expanded(child: Divider(color: Colors.grey.shade200, thickness: 1)),
-                  // ]),
-              
-                  // SizedBox(height: r.p(16)),
-              
-                  // // ── SSO button ─────────────────────────────────────────────
-                  // SizedBox(
-                  //   width: double.infinity,
-                  //   height: r.p(52),
-                  //   child: OutlinedButton(
-                  //     onPressed: _isLoading ? null : () {
-                  //       // SSO handler — wire up your SSO logic here
-                  //     },
-                  //     style: OutlinedButton.styleFrom(
-                  //       foregroundColor: const Color(0xFF222244),
-                  //       side: BorderSide(color: Colors.grey.shade200, width: 1.5),
-                  //       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(r.p(14))),
-                  //     ),
-                  //     child: Row(
-                  //       mainAxisAlignment: MainAxisAlignment.center,
-                  //       children: [
-                  //         Icon(Icons.shield_outlined, size: r.sp(18), color: _kPrimary),
-                  //         SizedBox(width: r.p(8)),
-                  //         Text(
-                  //           'Single Sign-On (SSO)',
-                  //           style: TextStyle(fontSize: r.sp(15), fontWeight: FontWeight.w600),
-                  //         ),
-                  //       ],
-                  //     ),
-                  //   ),
-                  // ),
-              
-                  // SizedBox(height: r.p(10)),
-              
-                  // ── Security footer ────────────────────────────────────────
-                  Center(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.lock_outline, size: r.sp(12), color: Colors.grey.shade400),
-                        SizedBox(width: r.p(4)),
-                        Text(
-                          'Secured with enterprise-grade encryption',
-                          style: TextStyle(fontSize: r.sp(11), color: Colors.grey.shade400),
-                        ),
-                      ],
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Remember me',
+                      style: TextStyle(fontSize: 13, color: UiColors.muted),
                     ),
-                  ),
-                  SizedBox(height: 166.h),
-                ],
-              ),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: _isLoading ? null : _showForgotPasswordDialog,
+                      style: TextButton.styleFrom(
+                        foregroundColor: UiColors.royalBlue,
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        minimumSize: const Size(0, 36),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: const Text(
+                        'Forgot password?',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+
+                // ── Sign In button ───────────────────────────────────────
+                AuthPrimaryButton(
+                  label: _isInCooldown
+                      ? () {
+                          final s = _cooldownSecondsRemaining;
+                          return 'Try again in ${(s ~/ 60).toString().padLeft(2, '0')}:${(s % 60).toString().padLeft(2, '0')}';
+                        }()
+                      : 'Sign In',
+                  loading: _isLoading,
+                  onPressed: (_isLoading || _isInCooldown)
+                      ? null
+                      : _attemptLogin,
+                ),
+              ],
             ),
           ),
         ),
-      ),
-    );
-  }
-
-  // ── Helpers ────────────────────────────────────────────────────────────────
-  Widget _fieldLabel(ResponsiveHelper r, String label) {
-    return Text(
-      label,
-      style: TextStyle(
-        fontSize: r.sp(13),
-        fontWeight: FontWeight.w600,
-        color: const Color(0xFF333355),
-      ),
-    );
-  }
-
-  Widget _buildTextField({
-    required ResponsiveHelper r,
-    required TextEditingController controller,
-    FocusNode? focusNode,
-    required String hintText,
-    required IconData prefixIcon,
-    TextInputType? keyboardType,
-    bool obscureText = false,
-    Widget? suffixIcon,
-    String? Function(String?)? validator,
-    Iterable<String>? autofillHints,
-    TextInputAction? textInputAction,
-    void Function(String)? onFieldSubmitted,
-  }) {
-    return TextFormField(
-      controller: controller,
-      focusNode: focusNode,
-      keyboardType: keyboardType,
-      obscureText: obscureText,
-      validator: validator,
-      autofillHints: autofillHints,
-      textInputAction: textInputAction,
-      onFieldSubmitted: onFieldSubmitted,
-      onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
-      style: TextStyle(fontSize: r.sp(15), color: const Color(0xFF111133)),
-      cursorColor: _kPrimary,
-      decoration: InputDecoration(
-        hintText: hintText,
-        hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: r.sp(14)),
-        prefixIcon: Icon(prefixIcon, color: Colors.grey.shade400, size: r.sp(20)),
-        suffixIcon: suffixIcon,
-        filled: true,
-        fillColor: const Color(0xFFF8F9FD),
-        contentPadding: EdgeInsets.symmetric(vertical: r.p(16), horizontal: r.p(16)),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(r.p(12)),
-          borderSide: BorderSide(color: Colors.grey.shade200, width: 1.5),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(r.p(12)),
-          borderSide: BorderSide(color: Colors.grey.shade200, width: 1.5),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(r.p(12)),
-          borderSide: const BorderSide(color: _kPrimary, width: 1.5),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(r.p(12)),
-          borderSide: const BorderSide(color: Colors.red, width: 1.5),
-        ),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(r.p(12)),
-          borderSide: const BorderSide(color: Colors.red, width: 1.5),
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Decorative circle ────────────────────────────────────────────────────────
-class _Circle extends StatelessWidget {
-  final double size;
-  const _Circle({required this.size});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: Colors.white.withOpacity(0.07),
-      ),
+      ],
     );
   }
 }

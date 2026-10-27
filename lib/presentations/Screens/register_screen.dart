@@ -49,13 +49,10 @@ class _RegisterPageState extends State<RegisterPage> {
     });
   }
 
-  /// Shows the permissions modal whenever any required permission is not granted.
   Future<void> _maybeShowPermissionsModal() async {
     if (!mounted) return;
     final needed = await PermissionService.anyNotGranted();
-    if (needed && mounted) {
-      await showPermissionsModal(context);
-    }
+    if (needed && mounted) await showPermissionsModal(context);
   }
 
   @override

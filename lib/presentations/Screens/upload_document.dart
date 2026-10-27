@@ -1,6 +1,9 @@
 // ignore_for_file: use_build_context_synchronously, unnecessary_this
 import 'package:digi_sanchika/local_storage.dart';
-import 'package:digi_sanchika/utils/app_fonts.dart';
+import 'package:digi_sanchika/widgets/file_type_icon.dart';
+import 'package:digi_sanchika/theme/ui_theme.dart';
+import 'package:digi_sanchika/widgets/folder_illustration.dart';
+import 'package:digi_sanchika/widgets/home_components.dart' show PillSearchField;
 import 'package:digi_sanchika/utils/responsive_helper.dart';
 import 'package:digi_sanchika/utils/design_tokens.dart';
 import 'package:digi_sanchika/services/upload_service.dart';
@@ -8,16 +11,17 @@ import 'package:digi_sanchika/services/folder_helper.dart';
 import 'package:digi_sanchika/services/folder_operations_service.dart';
 import 'package:digi_sanchika/models/folder_tree_node.dart';
 import 'package:digi_sanchika/services/folder_tree_service.dart'; // ADD THIS
-import 'package:digi_sanchika/presentations/screens/folder_manager_screen.dart'; // ADD THIS
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:digi_sanchika/widgets/dismiss_keyboard.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:digi_sanchika/models/document.dart';
 import 'package:digi_sanchika/models/folder.dart';
+import 'package:digi_sanchika/services/my_documents_service.dart';
 import 'package:digi_sanchika/services/document_library_service.dart';
 import 'package:digi_sanchika/services/shares_service.dart';
 import 'dart:io';
+import 'package:archive/archive.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:digi_sanchika/widgets/upload_result_dialog.dart';
 
 class UploadDocumentTab extends StatefulWidget {
@@ -41,14 +45,18 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
   final TextEditingController _keywordsController = TextEditingController();
   final TextEditingController _remarksController = TextEditingController();
 
-  // Upload type: null = none selected, 'single' | 'multiple' | 'folder'
+  // Upload type: null = none selected, 'files' | 'folder' | 'zip'
   String? _selectedUploadType;
 
   String _selectedFolder = '';
   String _selectedClassification = 'General';
+  bool _classificationOpen = false;
   bool _allowDownload = true;
   String _selectedSharingType = 'Public';
   final List<PlatformFile> _uploadedFiles = [];
+  // Local file path -> folder path (relative to the destination) for files
+  // that came from a folder or ZIP pick, so the hierarchy can be recreated.
+  final Map<String, String> _fileRelDirs = {};
   bool _isLoading = false;
   final bool _isConnected = true;
 
@@ -299,19 +307,61 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
     }
   }
 
-  // Method to navigate to folder manager
-  Future<void> _navigateToFolderManager(BuildContext context) async {
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => FolderManagerScreen(userName: widget.userName),
+  /// Creates a folder inside the current destination (or at root) from the
+  /// picker sheet, then makes it the destination.
+  Future<bool> _createFolderFromPicker(BuildContext sheetContext) async {
+    final controller = TextEditingController();
+    final parentName = _selectedFolderId == null
+        ? 'Root'
+        : (_selectedFolderName ?? 'selected folder');
+    final name = await showDialog<String>(
+      context: sheetContext,
+      builder: (ctx) => AlertDialog(
+        title: const Text('New folder'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textInputAction: TextInputAction.done,
+          decoration: InputDecoration(
+            hintText: 'Folder name',
+            helperText: 'Created in $parentName',
+          ),
+          onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('Create'),
+          ),
+        ],
       ),
     );
+    controller.dispose();
+    if (name == null || name.isEmpty || !mounted) return false;
 
-    // When returning from FolderManagerScreen, refresh the folder list
-    if (mounted && result == true) {
-      await _loadFolders();
+    final result = await MyDocumentsService.createFolder(
+      folderName: name,
+      parentFolderId: _selectedFolderId,
+    );
+    if (!mounted) return false;
+    if (result['success'] != true) {
+      _showErrorSnackBar(
+        (result['error'] ?? 'Failed to create folder').toString(),
+      );
+      return false;
     }
+    final folder = result['folder'] as Folder;
+    await _loadFolders();
+    if (!mounted) return false;
+    setState(() {
+      _selectedFolderId = folder.id;
+      _selectedFolderName = folder.name;
+    });
+    return true;
   }
 
   // NEW STATE VARIABLES FOR MODAL (add these to your state class)
@@ -323,6 +373,8 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
 
   // NEW METHOD: Show folder selector in a modal bottom sheet
   Future<void> _showFolderSelector(BuildContext context) async {
+    final searchController = TextEditingController();
+
     // Reset search and expanded state
     _searchQuery = '';
     _expandedFolders = {};
@@ -342,7 +394,6 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
         return StatefulBuilder(
           builder: (context, setModalState) {
             final selectedLabel = _destinationLabel();
-            final isRootSelected = _selectedFolderId == null;
             final inSearch = _searchQuery.isNotEmpty;
 
             return SafeArea(
@@ -394,7 +445,7 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
                                       style: TextStyle(
                                         fontSize: r.sp(18),
                                         fontWeight: FontWeight.w700,
-                                        color: Colors.indigo.shade800,
+                                        color: UiColors.primaryActive,
                                       ),
                                     ),
                                     SizedBox(height: r.p(4)),
@@ -409,6 +460,20 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
                                 ),
                               ),
                               IconButton(
+                                tooltip: 'New folder',
+                                icon: const Icon(
+                                  Icons.create_new_folder_outlined,
+                                  color: UiColors.primary,
+                                ),
+                                onPressed: () async {
+                                  final created =
+                                      await _createFolderFromPicker(context);
+                                  if (created && context.mounted) {
+                                    Navigator.pop(context);
+                                  }
+                                },
+                              ),
+                              IconButton(
                                 tooltip: 'Close',
                                 icon: const Icon(Icons.close_rounded),
                                 onPressed: () => Navigator.pop(context),
@@ -419,7 +484,7 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
                       ),
                     ),
 
-                    // Search bar
+                    // Search bar (same pill as the rest of the app)
                     Padding(
                       padding: EdgeInsets.fromLTRB(
                         r.p(16),
@@ -427,51 +492,9 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
                         r.p(16),
                         r.p(10),
                       ),
-                      child: TextField(
-                        textInputAction: TextInputAction.search,
-                        decoration: InputDecoration(
-                          hintText: 'Search folders',
-                          prefixIcon: Icon(
-                            Icons.search_rounded,
-                            color: Colors.grey.shade600,
-                          ),
-                          suffixIcon: _searchQuery.isNotEmpty
-                              ? IconButton(
-                                  tooltip: 'Clear',
-                                  icon: Icon(
-                                    Icons.clear_rounded,
-                                    size: r.sp(18),
-                                  ),
-                                  onPressed: () {
-                                    setModalState(() {
-                                      _searchQuery = '';
-                                      _filteredFolders = List.from(_folderTree);
-                                    });
-                                  },
-                                )
-                              : null,
-                          filled: true,
-                          fillColor: Colors.grey.shade50,
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: r.p(14),
-                            vertical: r.p(12),
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(r.p(12)),
-                            borderSide: BorderSide(color: Colors.grey.shade300),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(r.p(12)),
-                            borderSide: BorderSide(color: Colors.grey.shade300),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(r.p(12)),
-                            borderSide: const BorderSide(
-                              color: Colors.indigo,
-                              width: 1.2,
-                            ),
-                          ),
-                        ),
+                      child: PillSearchField(
+                        controller: searchController,
+                        hint: 'Search folders',
                         onChanged: (value) {
                           setModalState(() {
                             _searchQuery = value;
@@ -485,87 +508,15 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
                             }
                           });
                         },
-                      ),
-                    ),
-
-                    // Root option
-                    Padding(
-                      padding: EdgeInsets.symmetric(horizontal: r.p(16)),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(r.p(14)),
-                        onTap: () {
-                          setState(() {
-                            _selectedFolder = '';
-                            _selectedFolderName = null;
-                            _selectedFolderId = null;
+                        onClear: () {
+                          searchController.clear();
+                          setModalState(() {
+                            _searchQuery = '';
+                            _filteredFolders = List.from(_folderTree);
                           });
-                          // Ensure the bottom sheet UI updates immediately.
-                          setModalState(() {});
                         },
-                        child: Container(
-                          padding: EdgeInsets.all(r.p(12)),
-                          decoration: BoxDecoration(
-                            color: isRootSelected
-                                ? Colors.indigo.shade50
-                                : Colors.white,
-                            borderRadius: BorderRadius.circular(r.p(14)),
-                            border: Border.all(
-                              color: isRootSelected
-                                  ? Colors.indigo.shade200
-                                  : Colors.grey.shade200,
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: r.p(40),
-                                height: r.p(40),
-                                decoration: BoxDecoration(
-                                  color: Colors.grey.shade100,
-                                  borderRadius: BorderRadius.circular(r.p(12)),
-                                ),
-                                child: Icon(
-                                  Icons.home_rounded,
-                                  color: Colors.grey.shade700,
-                                ),
-                              ),
-                              SizedBox(width: r.p(12)),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Root',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        color: Colors.grey.shade900,
-                                      ),
-                                    ),
-                                    SizedBox(height: r.p(2)),
-                                    Text(
-                                      'Upload without choosing a folder',
-                                      style: TextStyle(
-                                        fontSize: r.sp(12),
-                                        color: Colors.grey.shade700,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Icon(
-                                isRootSelected
-                                    ? Icons.radio_button_checked_rounded
-                                    : Icons.radio_button_off_rounded,
-                                color: isRootSelected
-                                    ? Colors.indigo
-                                    : Colors.grey.shade500,
-                              ),
-                            ],
-                          ),
-                        ),
                       ),
                     ),
-
                     SizedBox(height: r.p(10)),
 
                     // Folder list header
@@ -668,17 +619,14 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
                       child: Row(
                         children: [
                           Container(
-                            width: r.p(38),
-                            height: r.p(38),
+                            width: r.p(42),
+                            height: r.p(42),
+                            alignment: Alignment.center,
                             decoration: BoxDecoration(
-                              color: Colors.indigo.shade50,
-                              borderRadius: BorderRadius.circular(r.p(12)),
+                              color: const Color(0xFFEAF3FF),
+                              borderRadius: BorderRadius.circular(r.p(13)),
                             ),
-                            child: Icon(
-                              Icons.folder_rounded,
-                              color: Colors.indigo.shade700,
-                              size: r.sp(20),
-                            ),
+                            child: FolderIllustration(size: r.p(30)),
                           ),
                           SizedBox(width: r.p(12)),
                           Expanded(
@@ -712,7 +660,8 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
                             icon: const Icon(Icons.check_rounded, size: 18),
                             label: const Text('Use'),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.indigo,
+                              // Same blue as the folder artwork.
+                              backgroundColor: UiColors.primaryActive,
                               foregroundColor: Colors.white,
                               padding: EdgeInsets.symmetric(
                                 horizontal: r.p(16),
@@ -734,6 +683,7 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
         );
       },
     );
+    searchController.dispose();
   }
 
   // Helper method to search folders
@@ -778,10 +728,10 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
       final leftIndent = depth * r.p(14);
       final baseBg = depth == 0 ? Colors.white : Colors.grey.shade50;
       final itemBg = isSelected
-          ? Colors.indigo.shade50
+          ? UiColors.primaryTint
           : (isExpanded ? Colors.grey.withValues(alpha: 0.06) : baseBg);
       final borderColor = isSelected
-          ? Colors.indigo.shade200
+          ? UiColors.primary.withAlpha(110)
           : (isExpanded ? Colors.grey.shade300 : Colors.grey.shade200);
 
       widgets.add(
@@ -797,10 +747,11 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
                 child: InkWell(
                   borderRadius: BorderRadius.circular(r.p(14)),
                   onTap: () {
+                    // Tapping the selected folder again goes back to Root.
                     setState(() {
-                      _selectedFolder = node.name;
-                      _selectedFolderName = node.name;
-                      _selectedFolderId = node.id;
+                      _selectedFolder = isSelected ? '' : node.name;
+                      _selectedFolderName = isSelected ? null : node.name;
+                      _selectedFolderId = isSelected ? null : node.id;
                     });
                     // Ensure the bottom sheet UI updates immediately.
                     setModalState(() {});
@@ -816,11 +767,16 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
                     ),
                     child: Row(
                       children: [
-                        Icon(
-                          isExpanded
-                              ? Icons.folder_open_rounded
-                              : Icons.folder_rounded,
-                          color: Colors.amber.shade700,
+                        // Same folder artwork as the folder cards.
+                        Container(
+                          width: r.p(38),
+                          height: r.p(38),
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEAF3FF),
+                            borderRadius: BorderRadius.circular(r.p(12)),
+                          ),
+                          child: FolderIllustration(size: r.p(28)),
                         ),
                         SizedBox(width: r.p(10)),
                         Expanded(
@@ -834,7 +790,7 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
                                 style: TextStyle(
                                   fontWeight: FontWeight.w700,
                                   color: isSelected
-                                      ? Colors.indigo.shade800
+                                      ? UiColors.primaryActive
                                       : Colors.grey.shade900,
                                 ),
                               ),
@@ -856,7 +812,7 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
                                 style: TextStyle(
                                   fontSize: r.sp(12),
                                   color: isSelected
-                                      ? Colors.indigo.shade600
+                                      ? UiColors.primaryActive
                                       : Colors.grey.shade600,
                                 ),
                               ),
@@ -913,9 +869,10 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
                           radius: r.p(22),
                           onTap: () {
                             setState(() {
-                              _selectedFolder = node.name;
-                              _selectedFolderName = node.name;
-                              _selectedFolderId = node.id;
+                              _selectedFolder = isSelected ? '' : node.name;
+                              _selectedFolderName =
+                                  isSelected ? null : node.name;
+                              _selectedFolderId = isSelected ? null : node.id;
                             });
                             setModalState(() {});
                           },
@@ -924,7 +881,7 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
                                 ? Icons.radio_button_checked_rounded
                                 : Icons.radio_button_off_rounded,
                             color: isSelected
-                                ? Colors.indigo
+                                ? UiColors.primary
                                 : Colors.grey.shade500,
                           ),
                         ),
@@ -1127,7 +1084,19 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
 
         // Online mode - use UploadService
         Map<String, dynamic> uploadResult;
-        if (_uploadedFiles.length == 1) {
+        // Folder / ZIP picks: recreate the directory tree, then upload each
+        // file into its own folder instead of flattening everything.
+        final hierarchy = await _resolveHierarchy(files);
+        if (hierarchy.isNotEmpty) {
+          uploadResult = await _uploadGrouped(
+            files: files,
+            hierarchy: hierarchy,
+            defaultFolderId: folderId,
+            keywords: keywords,
+            remarks: remarks,
+            docClass: apiClassification,
+          );
+        } else if (_uploadedFiles.length == 1) {
           // Single file upload
           uploadResult = await UploadService.uploadSingleFile(
             file: files.first,
@@ -1582,9 +1551,11 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
   void _resetForm() {
     setState(() {
       _uploadedFiles.clear();
+      _fileRelDirs.clear();
       _keywordsController.clear();
       _remarksController.clear();
       _selectedClassification = 'General';
+      _classificationOpen = false;
       _allowDownload = true;
       _selectedSharingType = 'Public';
 
@@ -1596,265 +1567,6 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
   }
 
   // ============ FILE PICKER METHODS ============
-  Future<void> _pickSingleFile() async {
-    try {
-      setState(() => _isLoading = true);
-
-      // Show a dialog to select file type
-      String? fileType = await showDialog<String>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Select File Type'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.audio_file),
-                title: const Text('Audio Files'),
-                onTap: () => Navigator.pop(context, 'audio'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.video_file),
-                title: const Text('Video Files'),
-                onTap: () => Navigator.pop(context, 'video'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.image),
-                title: const Text('Image Files'),
-                onTap: () => Navigator.pop(context, 'image'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.description),
-                title: const Text('Document Files'),
-                onTap: () => Navigator.pop(context, 'document'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.code),
-                title: const Text('Code Files'),
-                onTap: () => Navigator.pop(context, 'code'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.insert_drive_file),
-                title: const Text('All Files'),
-                onTap: () => Navigator.pop(context, 'all'),
-              ),
-            ],
-          ),
-        ),
-      );
-
-      if (fileType == null) return;
-
-      FilePickerResult? result;
-
-      switch (fileType) {
-        case 'audio':
-          result = await FilePicker.platform.pickFiles(
-            type: FileType.audio,
-            allowMultiple: false,
-          );
-          break;
-        case 'video':
-          result = await FilePicker.platform.pickFiles(
-            type: FileType.video,
-            allowMultiple: false,
-          );
-          break;
-        case 'image':
-          result = await FilePicker.platform.pickFiles(
-            type: FileType.image,
-            allowMultiple: false,
-          );
-          break;
-        case 'document':
-          result = await FilePicker.platform.pickFiles(
-            type: FileType.custom,
-            allowedExtensions: [
-              // Legacy Office
-              'doc',
-              'xls',
-              'ppt',
-              'rtf',
-              'mdb',
-              'pub',
-              'pps',
-              'dot',
-              'xlt',
-              'pot',
-              // Modern Office
-              'docx', 'xlsx', 'pptx', 'dotx', 'xltx', 'potx', 'accdb', 'one',
-              // OpenDocument
-              'odt', 'ods', 'odp', 'odg', 'odf',
-              // Apple iWork
-              'pages', 'numbers', 'key',
-              // PDFs
-              'pdf',
-              // Text Files
-              'txt', 'md', 'markdown',
-              // CSV/Data
-              'csv', 'tsv', 'xml', 'json',
-              // ZIP & Archives
-              'zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz', 'iso',
-              // Google Files
-              'gdoc', 'gsheet', 'gslides', 'gdraw',
-            ],
-            allowMultiple: false,
-          );
-          break;
-        case 'code':
-          result = await FilePicker.platform.pickFiles(
-            type: FileType.custom,
-            allowedExtensions: [
-              'doc', 'docx', 'dot', 'dotx', 'gdoc',
-              // Python
-              'py',
-              'pyc',
-              'pyo',
-              'pyd',
-              // JavaScript/TypeScript/React/Node.js
-              'js',
-              'jsx',
-              'ts',
-              'tsx',
-              'node',
-              'njs',
-              // HTML/CSS
-              'html', 'htm', 'css', 'scss', 'sass', 'less',
-              // Database
-              'sql',
-              'db',
-              'sqlite',
-              'sqlite3',
-              'mdb',
-              'accdb',
-              'frm',
-              'myd',
-              'myi',
-              // Other programming languages
-              'java',
-              'class',
-              'jar',
-              'c',
-              'cpp',
-              'cc',
-              'cxx',
-              'h',
-              'hpp',
-              'hxx',
-              'cs',
-              'php',
-              'phtml',
-              'rb',
-              'erb',
-              'go',
-              'rs',
-              'swift',
-              'kt',
-              'kts',
-              'dart',
-              // Shell/Bash
-              'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd',
-              // Configuration Files
-              'env', 'config', 'toml', 'ini', 'yaml', 'yml',
-              // JSON Files
-              'json', 'jsonl', 'jsonc',
-              // Other Code Files
-              'log',
-              'lock',
-              'license',
-              'readme',
-              'gitignore',
-              'dockerfile',
-              'makefile',
-            ],
-            allowMultiple: false,
-          );
-          break;
-        case 'all':
-        default:
-          result = await FilePicker.platform.pickFiles(
-            type: FileType.custom,
-            allowedExtensions: _allSupportedExtensions,
-            allowMultiple: false,
-          );
-          break;
-      }
-
-      if (result != null && result.files.isNotEmpty && mounted) {
-        PlatformFile file = result.files.first;
-
-        if (kDebugMode) {
-          print('📄 ===== FILE PICKER DEBUG =====');
-          print('📄 File name: ${file.name}');
-          print('📄 File path: ${file.path}');
-          print('📄 File size: ${file.size} bytes');
-          print(
-            "📄 File extension: ${file.name.split('.').last.toLowerCase()}",
-          );
-        }
-
-        if (file.size > 500 * 1024 * 1024) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('File "${file.name}" exceeds 500MB limit'),
-              backgroundColor: Colors.red,
-            ),
-          );
-          return;
-        }
-
-        if (file.path == null || file.path!.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Cannot access file "${file.name}". Please try again.',
-              ),
-              backgroundColor: Colors.red,
-            ),
-          );
-          return;
-        }
-
-        final fileObj = File(file.path!);
-        if (!fileObj.existsSync()) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('File "${file.name}" not found or inaccessible.'),
-              backgroundColor: Colors.red,
-            ),
-          );
-          return;
-        }
-
-        setState(() {
-          _uploadedFiles.add(file);
-        });
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('✅ Selected: ${file.name}'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        print('File picker error: $e');
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error picking file: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
-  }
-
   Future<void> _pickMultipleFiles() async {
     try {
       setState(() => _isLoading = true);
@@ -2258,6 +1970,58 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
     }
   }
 
+  // ── Folder / ZIP picking (hierarchy-preserving) ─────────────────────────────
+  static const _maxFileBytes = 500 * 1024 * 1024;
+
+  String _baseName(String path) =>
+      path.split(RegExp(r'[\\/]')).where((e) => e.isNotEmpty).last;
+
+  bool _isJunkEntry(String rel) {
+    for (final seg in rel.split('/')) {
+      if (seg == '__MACOSX' ||
+          seg == '.DS_Store' ||
+          seg == 'Thumbs.db' ||
+          seg == 'desktop.ini') {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// Adds [entries] (file + path relative to the picked root) to the upload
+  /// list and remembers each file's folder so it can be recreated on submit.
+  Future<({int added, int skipped})> _registerHierarchicalFiles(
+    String rootName,
+    List<({File file, String rel})> entries,
+  ) async {
+    var added = 0;
+    var skipped = 0;
+    for (final e in entries) {
+      if (_uploadedFiles.any((f) => f.path == e.file.path)) continue;
+      final parts = e.rel.split('/');
+      final size = await e.file.length();
+      if (size > _maxFileBytes) {
+        skipped++;
+        continue;
+      }
+      final dir = [rootName, ...parts.sublist(0, parts.length - 1)].join('/');
+      _uploadedFiles.add(
+        PlatformFile(path: e.file.path, name: parts.last, size: size),
+      );
+      _fileRelDirs[e.file.path] = dir;
+      added++;
+    }
+    if (mounted) setState(() {});
+    return (added: added, skipped: skipped);
+  }
+
+  void _toast(String message, Color color) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: color),
+    );
+  }
+
   Future<void> _pickFolder() async {
     setState(() => _isLoading = true);
     try {
@@ -2265,99 +2029,258 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
       if (dirPath == null) return;
 
       final rootDir = Directory(dirPath);
-      final rootName = dirPath.split(Platform.pathSeparator).last;
+      final rootName = _baseName(dirPath);
 
-      final allEntities = rootDir.listSync(recursive: true, followLinks: false);
-      final files = allEntities.whereType<File>().toList();
+      final entries = <({File file, String rel})>[];
+      for (final e in rootDir.listSync(recursive: true, followLinks: false)) {
+        if (e is! File) continue;
+        final rel = e.path
+            .substring(rootDir.path.length)
+            .replaceAll('\\', '/')
+            .replaceFirst(RegExp(r'^/+'), '');
+        if (rel.isEmpty || _isJunkEntry(rel)) continue;
+        entries.add((file: e, rel: rel));
+      }
 
-      if (files.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No files found in selected folder'),
-            backgroundColor: Colors.orange,
-          ),
-        );
+      if (entries.isEmpty) {
+        _toast('No files found in selected folder', Colors.orange);
         return;
       }
 
-      // Collect unique relative sub-directory paths
-      final relDirs = <String>{};
-      for (final file in files) {
-        final rel = file.path
-            .replaceFirst(rootDir.path, '')
-            .replaceAll('\\', '/');
-        final parts = rel.split('/').where((p) => p.isNotEmpty).toList();
-        for (int i = 0; i < parts.length - 1; i++) {
-          relDirs.add(parts.sublist(0, i + 1).join('/'));
-        }
-      }
-
-      // Create folder structure via API
-      final Map<String, String> pathToId = {};
-      if (relDirs.isNotEmpty) {
-        final folderPayload = relDirs
-            .map(
-              (p) => {
-                'name': p.split('/').last,
-                'path': p,
-                'parentId': _selectedFolderId,
-              },
-            )
-            .toList();
-        final result = await FolderOperationsService().bulkCreateFolders(
-          folderPayload,
-        );
-        if (result['success'] == true) {
-          final created = result['data']?['folders'] ?? result['data'] ?? [];
-          if (created is List) {
-            for (final f in created) {
-              if (f is Map) {
-                final p = f['path']?.toString() ?? '';
-                final id = f['id']?.toString() ?? '';
-                if (p.isNotEmpty && id.isNotEmpty) pathToId[p] = id;
-              }
-            }
-          }
-        }
-      }
-
-      // Add files to the upload list
-      int added = 0;
-      for (final file in files) {
-        final rel = file.path
-            .replaceFirst(rootDir.path, '')
-            .replaceAll('\\', '/');
-        final parts = rel.split('/').where((p) => p.isNotEmpty).toList();
-        final fileName = parts.last;
-
-        final stat = await file.stat();
-        final pf = PlatformFile(
-          path: file.path,
-          name: fileName,
-          size: stat.size,
-        );
-        setState(() => _uploadedFiles.add(pf));
-        added++;
-      }
-
-      if (added > 0) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Added $added file(s) from "$rootName"'),
-            backgroundColor: Colors.green,
-          ),
+      final res = await _registerHierarchicalFiles(rootName, entries);
+      if (res.added > 0) {
+        _toast(
+          'Added ${res.added} file(s) from "$rootName"'
+          '${res.skipped > 0 ? ' (${res.skipped} over 500MB skipped)' : ''}',
+          Colors.green,
         );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Folder pick error: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      _toast('Folder pick error: $e', Colors.red);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _pickZip() async {
+    setState(() => _isLoading = true);
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const ['zip'],
+        allowMultiple: false,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final zipPath = result.files.single.path;
+      if (zipPath == null) {
+        _toast('Could not read the selected ZIP file', Colors.red);
+        return;
+      }
+
+      final zipName = _baseName(
+        zipPath,
+      ).replaceAll(RegExp(r'\.zip$', caseSensitive: false), '');
+      final archive = ZipDecoder().decodeBytes(
+        await File(zipPath).readAsBytes(),
+      );
+
+      final tmp = await getTemporaryDirectory();
+      final outDir = Directory(
+        '${tmp.path}${Platform.pathSeparator}zip_${DateTime.now().millisecondsSinceEpoch}',
+      );
+      await outDir.create(recursive: true);
+
+      final entries = <({File file, String rel})>[];
+      for (final af in archive) {
+        if (!af.isFile) continue;
+        final rel = af.name
+            .replaceAll('\\', '/')
+            .replaceFirst(RegExp(r'^/+'), '');
+        // Skip junk and guard against path traversal ("zip-slip").
+        if (rel.isEmpty || rel.split('/').contains('..') || _isJunkEntry(rel)) {
+          continue;
+        }
+        final out = File('${outDir.path}/$rel');
+        await out.parent.create(recursive: true);
+        await out.writeAsBytes(af.content as List<int>);
+        entries.add((file: out, rel: rel));
+      }
+
+      if (entries.isEmpty) {
+        _toast('The ZIP archive contains no usable files', Colors.orange);
+        return;
+      }
+
+      final res = await _registerHierarchicalFiles(zipName, entries);
+      _toast(
+        'Extracted ${res.added} file(s) from "$zipName.zip"'
+        '${res.skipped > 0 ? ' (${res.skipped} over 500MB skipped)' : ''}',
+        Colors.green,
+      );
+    } catch (e) {
+      _toast('Could not read ZIP: $e', Colors.red);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  /// Creates the folder tree for folder/ZIP picks under the chosen
+  /// destination and returns local file path -> destination folder id.
+  /// Files whose folder could not be created are left out (they fall back to
+  /// the destination folder).
+  Future<Map<String, String>> _resolveHierarchy(List<File> files) async {
+    final dirs = <String>{};
+    for (final f in files) {
+      final d = _fileRelDirs[f.path];
+      if (d == null) continue;
+      final parts = d.split('/');
+      for (var i = 0; i < parts.length; i++) {
+        dirs.add(parts.sublist(0, i + 1).join('/'));
+      }
+    }
+    if (dirs.isEmpty) return {};
+
+    final ordered = dirs.toList()
+      ..sort((a, b) {
+        final c = a.split('/').length.compareTo(b.split('/').length);
+        return c != 0 ? c : a.compareTo(b);
+      });
+    final payload = ordered
+        .map(
+          (d) => {
+            'name': d.split('/').last,
+            'path': d,
+            'parentId': _selectedFolderId,
+          },
+        )
+        .toList();
+
+    final result = await FolderOperationsService().bulkCreateFolders(payload);
+    final pathToId = <String, String>{};
+    if (result['success'] == true) {
+      final data = result['data'];
+      final created = data is Map ? (data['folders'] ?? data['data']) : data;
+      if (created is List) {
+        for (final f in created) {
+          if (f is! Map) continue;
+          final id = f['id']?.toString() ?? '';
+          final path = f['path']?.toString() ?? '';
+          if (id.isNotEmpty && path.isNotEmpty) pathToId[path] = id;
+        }
+        // Backend did not echo paths: assume it answered in request order.
+        if (pathToId.length < ordered.length &&
+            created.length == ordered.length) {
+          for (var i = 0; i < created.length; i++) {
+            final f = created[i];
+            final id = f is Map ? f['id']?.toString() ?? '' : '';
+            if (id.isNotEmpty) pathToId.putIfAbsent(ordered[i], () => id);
+          }
+        }
+      }
+    }
+
+    final out = <String, String>{};
+    var missing = 0;
+    for (final f in files) {
+      final d = _fileRelDirs[f.path];
+      if (d == null) continue;
+      final id = pathToId[d];
+      if (id != null) {
+        out[f.path] = id;
+      } else {
+        missing++;
+      }
+    }
+    if (missing > 0) {
+      _toast(
+        'Could not create some folders - $missing file(s) will go to the '
+        'destination folder instead.',
+        Colors.orange,
+      );
+    }
+    return out;
+  }
+
+  /// Uploads [files] one folder at a time and merges the per-file results.
+  Future<Map<String, dynamic>> _uploadGrouped({
+    required List<File> files,
+    required Map<String, String> hierarchy,
+    required String defaultFolderId,
+    required String keywords,
+    required String remarks,
+    required String docClass,
+  }) async {
+    final groups = <String, List<File>>{};
+    for (final f in files) {
+      groups
+          .putIfAbsent(hierarchy[f.path] ?? defaultFolderId, () => [])
+          .add(f);
+    }
+
+    final allResults = <Map<String, dynamic>>[];
+    var requiresLogin = false;
+    String? message;
+    dynamic status;
+    dynamic error;
+
+    for (final entry in groups.entries) {
+      final group = entry.value;
+      final res = group.length == 1
+          ? await UploadService.uploadSingleFile(
+              file: group.first,
+              keywords: keywords,
+              remarks: remarks,
+              docClass: docClass,
+              allowDownload: _allowDownload,
+              folderId: entry.key,
+              sharing: 'private',
+              specificUsers: '[]',
+            )
+          : await UploadService.uploadMultipleFiles(
+              files: group,
+              keywords: keywords,
+              remarks: remarks,
+              docClass: docClass,
+              allowDownload: _allowDownload,
+              folderId: entry.key,
+              sharing: 'private',
+              specificUsers: '[]',
+            );
+
+      if (res['requiresLogin'] == true) requiresLogin = true;
+      final ok = res['success'] == true;
+      final rawResults = res['file_results'];
+      if (rawResults is List && rawResults.isNotEmpty) {
+        for (final m in rawResults.whereType<Map>()) {
+          allResults.add(Map<String, dynamic>.from(m));
+        }
+      } else {
+        for (final f in group) {
+          allResults.add({
+            'fileName': _baseName(f.path),
+            'success': ok,
+            'error': res['message'] ?? 'Upload failed',
+            if (res['documentId'] != null) 'documentId': res['documentId'],
+          });
+        }
+      }
+      if (!ok) {
+        message = res['message']?.toString();
+        status = res['statusCode'];
+        error = res['error'];
+      }
+    }
+
+    final anyOk = allResults.any((r) => r['success'] == true);
+    return {
+      'success':
+          allResults.isNotEmpty && allResults.every((r) => r['success'] == true),
+      'file_results': allResults,
+      'message': message ?? (anyOk ? 'Uploaded' : 'Upload failed'),
+      'statusCode': status,
+      'error': error,
+      'requiresLogin': requiresLogin && !anyOk,
+    };
   }
 
   // ============ FILE ICON/COLOR METHODS ============
@@ -2650,557 +2573,134 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
     }
   }
 
+  void _onSharingChanged(String value) {
+    setState(() {
+      _selectedSharingType = value;
+      if (value == 'Specific Users') {
+        _shareWithSpecificUsers = true;
+      } else {
+        _shareWithSpecificUsers = false;
+        _specificUserIds.clear();
+      }
+    });
+
+    if (value == 'Specific Users') {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        await _pickSpecificUsers();
+        if (!mounted) return;
+        if (_specificUserIds.isEmpty) {
+          setState(() {
+            _selectedSharingType = 'Private';
+            _shareWithSpecificUsers = false;
+          });
+        }
+      });
+    }
+  }
+
   // ============ BUILD METHOD ============
   @override
   Widget build(BuildContext context) {
     final r = context.r;
     final layout = AppLayout.of(context);
     return Scaffold(
-      // backgroundColor: Colors.transparent,
+      backgroundColor: UiColors.background,
       appBar: AppBar(
-        automaticallyImplyLeading: false,
-        title:  Text('Upload Files',style: w700_20Poppins(color: Colors.indigo),),
-       actions: [
-          IconButton(
-            icon: const Icon(Icons.close, color: Colors.indigo),
-            onPressed: () => Navigator.pop(context),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: UiColors.ink),
+          onPressed: () => Navigator.pop(context),
+        ),
+        centerTitle: true,
+        title: const Text(
+          'Upload Documents',
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+            color: UiColors.ink,
           ),
-       ],
-        backgroundColor: Colors.white,
+        ),
+        backgroundColor: UiColors.background,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
       ),
-      body: Container(
-        color: Colors.transparent,
-        child: SingleChildScrollView(
-          padding: EdgeInsets.symmetric(
-            horizontal: layout.gutter,
-            vertical: r.p(24),
-          ),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: layout.maxContentWidth),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // ── Upload Type Selection ──────────────────────────────
-                  Card(
-                    elevation: 0.5,
-                    color: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(r.p(12)),
-                    ),
-                    child: Padding(
-                      padding: EdgeInsets.all(r.p(16)),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Upload Type',
-                            style: TextStyle(
-                              fontSize: r.sp(16),
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          SizedBox(height: r.p(12)),
-                          Row(
-                            children: [
-                              _buildUploadTypeOption(
-                                r: r,
-                                type: 'single',
-                                icon: Icons.insert_drive_file_outlined,
-                                label: 'Single',
-                              ),
-                              SizedBox(width: r.p(10)),
-                              _buildUploadTypeOption(
-                                r: r,
-                                type: 'multiple',
-                                icon: Icons.copy_outlined,
-                                label: 'Multiple',
-                              ),
-                              SizedBox(width: r.p(10)),
-                              _buildUploadTypeOption(
-                                r: r,
-                                type: 'folder',
-                                icon: Icons.folder_outlined,
-                                label: 'Folder',
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+      bottomNavigationBar: _buildSubmitBar(r),
+      body: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(
+          layout.gutter,
+          r.p(8),
+          layout.gutter,
+          r.p(24),
+        ),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: layout.maxContentWidth),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildUploadTypeCard(r),
+                SizedBox(height: r.p(14)),
+                _buildDropzone(r),
+                SizedBox(height: r.p(24)),
 
-                  // ── "Tap to browse" tile – shown only after type is chosen ──
-                  if (_selectedUploadType != null) ...[
-                    SizedBox(height: r.p(16)),
-                    GestureDetector(
-                      onTap: _isLoading ? null : _triggerFilePicker,
-                      child: DottedBrowseTile(r: r, isLoading: _isLoading),
-                    ),
-                  ],
+                _sectionLabel('Classification', r, required: true),
+                SizedBox(height: r.p(10)),
+                _buildClassificationField(),
+                SizedBox(height: r.p(24)),
 
-            height10,
-                  if (_uploadedFiles.isNotEmpty) ...[
-                    SizedBox(height: r.p(24)),
-                    Text(
-                      'Selected Files:',
-                      style: TextStyle(
-                        fontSize: r.sp(16),
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    SizedBox(height: r.p(8)),
-                    ..._uploadedFiles.map(
-                      (file) => Card(
-                        color: Colors.white,
-                        margin: EdgeInsets.only(bottom: r.p(8)),
-                        child: ListTile(
-                          leading: Icon(
-                            _getFileIcon(file.name),
-                            color: _getFileColor(file.name),
-                          ),
-                          title: Text(file.name),
-                          subtitle: Text(_getFileSizeString(file.size)),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.close, color: Colors.red),
-                            onPressed: () {
-                              setState(() {
-                                _uploadedFiles.remove(file);
-                              });
-                            },
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-            
-                 height10,
-            
-                  // Document Details Section
-                  Text(
-                    'Document Details',
-                    style: TextStyle(
-                      fontSize: r.sp(18),
-                      fontWeight: FontWeight.bold,
-                    ),
+                _sectionLabel('Document Visibility', r, required: true),
+                SizedBox(height: r.p(10)),
+                _visibilityCard(
+                  r: r,
+                  value: 'Private',
+                  icon: Icons.lock_outline_rounded,
+                  title: 'Private',
+                  subtitle: 'Only you can access this document',
+                ),
+                _visibilityCard(
+                  r: r,
+                  value: 'Public',
+                  icon: Icons.public_rounded,
+                  title: 'Public',
+                  subtitle:
+                      'Listed in the Document Library under its public-access rules',
+                ),
+                _visibilityCard(
+                  r: r,
+                  value: 'Specific Users',
+                  icon: Icons.group_outlined,
+                  title: 'Specific Users',
+                  subtitle: _specificUserIds.isEmpty
+                      ? 'Only the users you choose can access it'
+                      : '${_specificUserIds.length} user(s) selected - tap to change',
+                ),
+                SizedBox(height: r.p(12)),
+
+                _sectionLabel('Destination Folder', r, required: true),
+                SizedBox(height: r.p(10)),
+                _buildDestinationCard(r),
+                SizedBox(height: r.p(24)),
+
+                _sectionLabel('Additional Details', r),
+                SizedBox(height: r.p(10)),
+                TextField(
+                  controller: _keywordsController,
+                  decoration: _fieldDecoration(
+                    hint: 'Keywords (separated by commas)',
+                    icon: Icons.label_important_outline,
                   ),
-                  height10,
-                  Card(
-                   color: Colors.white,
-                   elevation: 0.5,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(r.p(12)),
-                    ),
-                    child: Padding(
-                      padding: EdgeInsets.all(r.p(16)),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            leading: Container(
-                              width: r.p(44),
-                              height: r.p(44),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF2B41BD).withAlpha(18),
-                                borderRadius: BorderRadius.circular(r.p(12)),
-                                border: Border.all(
-                                  color: const Color(0xFF2B41BD).withAlpha(35),
-                                ),
-                              ),
-                              child: Icon(
-                                _selectedFolderId == null
-                                    ? Icons.home_rounded
-                                    : Icons.folder_rounded,
-                                color: const Color(0xFF2B41BD),
-                              ),
-                            ),
-                            title: const Text(
-                              'Destination folder',
-                              style: TextStyle(fontWeight: FontWeight.w800),
-                            ),
-                            subtitle: Text(
-                              _selectedFolderId == null
-                                  ? 'Root (No folder)'
-                                  : (_selectedFolderName ?? 'Selected folder'),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            trailing: _foldersLoading
-                                ? SizedBox(
-                                    width: r.p(20),
-                                    height: r.p(20),
-                                    child: const CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Icon(Icons.chevron_right_rounded),
-                            onTap: _foldersLoading
-                                ? null
-                                : () => _showFolderSelector(context),
-                          ),
-                          SizedBox(height: r.p(10)),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: OutlinedButton.icon(
-                                  onPressed: _foldersLoading
-                                      ? null
-                                      : () => _showFolderSelector(context),
-                                  icon: Icon(
-                                    Icons.folder_open_rounded,
-                                    size: r.sp(18),
-                                  ),
-                                  label: const Text('Change'),
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: const Color(0xFF2B41BD),
-                                    side: BorderSide(
-                                      color: const Color(
-                                        0xFF2B41BD,
-                                      ).withAlpha(70),
-                                    ),
-                                    padding: EdgeInsets.symmetric(
-                                      vertical: r.p(12),
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(
-                                        r.p(12),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              SizedBox(width: r.p(12)),
-                              Expanded(
-                                child: FilledButton.icon(
-                                  onPressed: () =>
-                                      _navigateToFolderManager(context),
-                                  icon: Icon(
-                                    Icons.create_new_folder_outlined,
-                                    size: r.sp(18),
-                                  ),
-                                  label: const Text('Create'),
-                                  style: FilledButton.styleFrom(
-                                    backgroundColor: const Color(0xFF2B41BD),
-                                    padding: EdgeInsets.symmetric(
-                                      vertical: r.p(12),
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(
-                                        r.p(12),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          SizedBox(height: r.p(8)),
-                          Text(
-                            _selectedFolderId == null
-                                ? 'Uploads will go to the root directory.'
-                                : 'Uploads will go to "${_selectedFolderName ?? 'selected folder'}".',
-                            style: TextStyle(
-                              fontSize: r.sp(12),
-                              color: Colors.grey.shade600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                ),
+                SizedBox(height: r.p(12)),
+                TextField(
+                  controller: _remarksController,
+                  maxLines: 2,
+                  decoration: _fieldDecoration(
+                    hint: 'Remarks or description',
+                    icon: Icons.description_outlined,
+                    alignHint: true,
                   ),
-                  SizedBox(height: r.p(16)),
-            
-                  // Classification Dropdown with specified options
-                  DropdownButtonFormField<String>(
-                    initialValue: _selectedClassification,
-                    decoration: InputDecoration(
-                      labelText: 'Classification',
-                      prefixIcon: const Icon(
-                        Icons.security,
-                        color: Colors.indigo,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(r.p(8)),
-                        borderSide: BorderSide(
-                          color: Colors.grey.shade400,
-                        ),
-                      ),
-                      filled: true,
-                      fillColor: Colors.white,
-                    ),
-                    items:
-                        const [
-                          'General',
-                          'Unclassified',
-                          'Internal Use Only',
-                          'Corporate Confidential',
-                          'Restricted',
-                          'Confidential',
-                          'Secret',
-                        ].map((classification) {
-                          return DropdownMenuItem(
-                            value: classification,
-                            child: Text(classification),
-                          );
-                        }).toList(),
-                    onChanged: (value) {
-                      if (value != null) {
-                        setState(() {
-                          _selectedClassification = value;
-                        });
-                      }
-                    },
-                  ),
-            
-                  SizedBox(height: r.p(16)),
-            
-                  // Keywords Text Field
-                  TextField(
-                    controller: _keywordsController,
-                    decoration: InputDecoration(
-                      labelText: 'Keywords',
-                      labelStyle: w400_14Poppins(color: Colors.grey.shade600),
-                      hintText: 'Enter keywords separated by commas',
-                      hintStyle: w400_14Poppins(color: Colors.grey.shade300),
-                      prefixIcon: const Icon(Icons.label_important_outline, color: Colors.indigo),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(r.p(8)),
-                      ),
-                      filled: true,
-                      fillColor: Colors.white,
-                    ),
-                  ),
-            
-                  SizedBox(height: r.p(16)),
-            
-                  // Remarks Description Box
-                  TextField(
-                    controller: _remarksController,
-                    maxLines: 2,
-                    decoration: InputDecoration(
-                      labelText: 'Remarks',
-                      hintText: 'Enter description or remarks',
-                      prefixIcon: const Icon(
-                        Icons.description_outlined,
-                        color: Colors.indigo,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(r.p(8)),
-                      ),
-                      filled: true,
-                      fillColor: Colors.grey.shade50,
-                      alignLabelWithHint: true,
-                    ),
-                  ),
-            
-                  SizedBox(height: r.p(16)),
-            
-                  DropdownButtonFormField<String>(
-                    isExpanded: true,
-                    initialValue: _selectedSharingType,
-                    decoration: InputDecoration(
-                      labelText: 'Sharing',
-                      prefixIcon: const Icon(Icons.share_outlined, color: Colors.indigo),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(r.p(8)),
-                      ),
-                      filled: true,
-                      fillColor: Colors.grey.shade50,
-                    ),
-                    items: [
-                      DropdownMenuItem(
-                        value: 'Public',
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.public,
-                              color: Colors.green,
-                              size: r.sp(18),
-                            ),
-                            SizedBox(width: r.p(10)),
-                            Expanded(
-                              child: Text(
-                                'Public - Visible in Document Library',
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      DropdownMenuItem(
-                        value: 'Private',
-                        child: Row(
-                          children: [
-                            Icon(Icons.lock, color: Colors.red, size: r.sp(18)),
-                            SizedBox(width: r.p(10)),
-                            Expanded(
-                              child: Text(
-                                'Private - Only in My Documents',
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      DropdownMenuItem(
-                        value: 'Specific Users',
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.group,
-                              color: Colors.indigo,
-                              size: r.sp(18),
-                            ),
-                            SizedBox(width: r.p(10)),
-                            Expanded(
-                              child: Text(
-                                'Share with Specific Users',
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                    onChanged: (value) {
-                      if (value != null) {
-                        setState(() {
-                          _selectedSharingType = value;
-                          if (_selectedSharingType == 'Public') {
-                            _shareWithSpecificUsers = false;
-                            _specificUserIds.clear();
-                          } else if (_selectedSharingType == 'Private') {
-                            _shareWithSpecificUsers = false;
-                            _specificUserIds.clear();
-                          } else if (_selectedSharingType == 'Specific Users') {
-                            _shareWithSpecificUsers = true;
-                          }
-                        });
-            
-                        if (value == 'Specific Users') {
-                          WidgetsBinding.instance.addPostFrameCallback((
-                            _,
-                          ) async {
-                            if (!mounted) return;
-                            await _pickSpecificUsers();
-                            if (!mounted) return;
-                            if (_specificUserIds.isEmpty) {
-                              setState(() {
-                                _selectedSharingType = 'Private';
-                                _shareWithSpecificUsers = false;
-                              });
-                            }
-                          });
-                        }
-                      }
-                    },
-                  ),
-            
-                 height10,
-            
-                  if (_selectedSharingType == 'Private') ...[
-                    SwitchListTile.adaptive(
-                      contentPadding: EdgeInsets.zero,
-                      value: _shareWithSpecificUsers,
-                      onChanged: (v) async {
-                        setState(() {
-                          _shareWithSpecificUsers = v;
-                          if (!v) {
-                            _specificUserIds.clear();
-                          }
-                        });
-                        if (v) {
-                          await _pickSpecificUsers();
-                        }
-                      },
-                      title: const Text('Share with Specific Users'),
-                      subtitle: Text(
-                        _specificUserIds.isEmpty
-                            ? 'Optional: limit access to selected users'
-                            : '${_specificUserIds.length} user(s) selected',
-                      ),
-                    ),
-                    if (_shareWithSpecificUsers)
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: _pickSpecificUsers,
-                          icon: const Icon(Icons.group_add),
-                          label: const Text('Select users'),
-                        ),
-                      ),
-                    SizedBox(height: r.p(12)),
-                  ],
-            
-                  if (_selectedSharingType == 'Specific Users') ...[
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.group, color: Colors.indigo),
-                      title: const Text('Share with Specific Users'),
-                      subtitle: Text(
-                        _specificUserIds.isEmpty
-                            ? 'Select users who can access this document'
-                            : '${_specificUserIds.length} user(s) selected',
-                      ),
-                      trailing: TextButton(
-                        onPressed: _pickSpecificUsers,
-                        child: const Text('Change'),
-                      ),
-                    ),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: _pickSpecificUsers,
-                        icon: const Icon(Icons.group_add),
-                        label: const Text('Select users'),
-                      ),
-                    ),
-                    SizedBox(height: r.p(12)),
-                  ],
-            
-                  SizedBox(height: r.p(16)),
-            
-                  // Upload Document Button
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: (_isLoading || _foldersLoading)
-                          ? null
-                          : _uploadDocument,
-                      icon: Icon(Icons.cloud_upload_outlined, size: r.sp(24)),
-                      label: _isLoading
-                          ? SizedBox(
-                              width: r.p(20),
-                              height: r.p(20),
-                              child: const CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  Colors.white,
-                                ),
-                              ),
-                            )
-                          : Text(
-                              'Upload Document',
-                              style: TextStyle(
-                                fontSize: r.sp(18),
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.indigo,
-                        foregroundColor: Colors.white,
-                        padding: EdgeInsets.symmetric(vertical: r.p(16)),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(r.p(12)),
-                        ),
-                        elevation: 2,
-                      ),
-                    ),
-                  ),
-                  SizedBox(height: r.p(24)),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
@@ -3208,12 +2708,124 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
     );
   }
 
-  // ── Upload-type option chip ────────────────────────────────────────────────
+  // ── Small building blocks ──────────────────────────────────────────────────
+  Widget _sectionLabel(String text, ResponsiveHelper r, {bool required = false}) {
+    return Text.rich(
+      TextSpan(
+        text: text,
+        children: [
+          if (required)
+            const TextSpan(
+              text: ' *',
+              style: TextStyle(color: Color(0xFFE11D48)),
+            ),
+        ],
+      ),
+      style: TextStyle(
+        fontSize: r.sp(18),
+        fontWeight: FontWeight.w600,
+        color: UiColors.ink,
+      ),
+    );
+  }
+
+  InputDecoration _fieldDecoration({
+    required String hint,
+    required IconData icon,
+    bool alignHint = false,
+  }) {
+    OutlineInputBorder border([Color c = UiColors.border]) =>
+        OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: BorderSide(color: c),
+        );
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: const TextStyle(color: UiColors.textMuted),
+      prefixIcon: Icon(icon, color: UiColors.primary),
+      filled: true,
+      fillColor: Colors.white,
+      alignLabelWithHint: alignHint,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      border: border(),
+      enabledBorder: border(),
+      focusedBorder: border(UiColors.primary),
+    );
+  }
+
+  Widget _card({required Widget child, EdgeInsets? padding}) {
+    return Container(
+      width: double.infinity,
+      padding: padding ?? const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: UiColors.border),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(10),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+
+  // ── "What do you want to upload?" ──────────────────────────────────────────
+  Widget _buildUploadTypeCard(ResponsiveHelper r) {
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'What do you want to upload?',
+            style: TextStyle(
+              fontSize: r.sp(17),
+              fontWeight: FontWeight.w600,
+              color: UiColors.ink,
+            ),
+          ),
+          SizedBox(height: r.p(14)),
+          Row(
+            children: [
+              _buildUploadTypeOption(
+                r: r,
+                type: 'files',
+                icon: Icons.file_copy_outlined,
+                label: 'Files',
+                caption: 'One or many',
+              ),
+              SizedBox(width: r.p(10)),
+              _buildUploadTypeOption(
+                r: r,
+                type: 'folder',
+                icon: Icons.drive_folder_upload_outlined,
+                label: 'Folder',
+                caption: 'Keeps subfolders',
+              ),
+              SizedBox(width: r.p(10)),
+              _buildUploadTypeOption(
+                r: r,
+                type: 'zip',
+                icon: Icons.folder_zip_outlined,
+                label: 'ZIP',
+                caption: 'Auto-extracted',
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildUploadTypeOption({
     required ResponsiveHelper r,
     required String type,
     required IconData icon,
     required String label,
+    required String caption,
   }) {
     final isSelected = _selectedUploadType == type;
     return Expanded(
@@ -3225,35 +2837,62 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
                   _selectedUploadType = type;
                   // Clear previously picked files when type changes
                   _uploadedFiles.clear();
+                  _fileRelDirs.clear();
                 });
               },
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
-          padding: EdgeInsets.symmetric(vertical: r.p(14)),
+          padding: EdgeInsets.symmetric(
+            vertical: r.p(14),
+            horizontal: r.p(8),
+          ),
           decoration: BoxDecoration(
-            color: isSelected ? Colors.indigo.shade50 : Colors.white,
-            borderRadius: BorderRadius.circular(r.p(10)),
+            color: isSelected ? UiColors.primaryTint : const Color(0xFFF8FAFF),
+            borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: isSelected ? Colors.indigo : Colors.grey.shade300,
+              color: isSelected ? UiColors.primary : UiColors.border,
               width: isSelected ? 2 : 1,
             ),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                icon,
-                size: r.sp(24),
-                color: isSelected ? Colors.indigo : Colors.grey.shade500,
+              Container(
+                width: r.p(44),
+                height: r.p(44),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? UiColors.primary
+                      : UiColors.primary.withAlpha(22),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  icon,
+                  size: r.sp(24),
+                  color: isSelected ? Colors.white : UiColors.primary,
+                ),
               ),
-              SizedBox(height: r.p(6)),
+              SizedBox(height: r.p(8)),
               Text(
                 label,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: r.sp(12),
-                  fontWeight:
-                      isSelected ? FontWeight.w600 : FontWeight.normal,
-                  color: isSelected ? Colors.indigo : Colors.grey.shade600,
+                  fontSize: r.sp(14),
+                  fontWeight: FontWeight.w600,
+                  color: UiColors.ink,
+                ),
+              ),
+              SizedBox(height: r.p(2)),
+              Text(
+                caption,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: r.sp(11.5),
+                  color: UiColors.textMuted,
                 ),
               ),
             ],
@@ -3263,17 +2902,500 @@ class _UploadDocumentTabState extends State<UploadDocumentTab> {
     );
   }
 
+  // ── Selection / drop zone ──────────────────────────────────────────────────
+  Future<void> _onDropzoneTap() async {
+    if (_isLoading) return;
+    if (_selectedUploadType == null) {
+      _toast('Choose what you want to upload first', Colors.orange);
+      return;
+    }
+    await _triggerFilePicker();
+  }
+
+  Widget _buildDropzone(ResponsiveHelper r) {
+    final hasFiles = _uploadedFiles.isNotEmpty;
+    return _card(
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(22),
+            onTap: _onDropzoneTap,
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: r.p(16),
+                vertical: r.p(22),
+              ),
+              child: Column(
+                children: [
+                  _isLoading
+                      ? SizedBox(
+                          width: r.p(36),
+                          height: r.p(36),
+                          child: const CircularProgressIndicator(strokeWidth: 3),
+                        )
+                      : Icon(
+                          Icons.cloud_upload_outlined,
+                          size: r.sp(44),
+                          color: const Color(0xFF475569),
+                        ),
+                  SizedBox(height: r.p(10)),
+                  Text(
+                    hasFiles
+                        ? '${_uploadedFiles.length} file(s) selected'
+                        : 'Nothing selected yet',
+                    style: TextStyle(
+                      fontSize: r.sp(17),
+                      fontWeight: FontWeight.w600,
+                      color: UiColors.ink,
+                    ),
+                  ),
+                  SizedBox(height: r.p(6)),
+                  Text(
+                    hasFiles
+                        ? 'Tap here to choose again'
+                        : 'PDF, Word, Excel, PowerPoint, images, audio and video.\nUp to 500 MB per file.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: r.sp(13),
+                      height: 1.4,
+                      color: UiColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (hasFiles) ...[
+            const Divider(height: 1, color: UiColors.border),
+            ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: r.hp(0.32)),
+              child: ListView.separated(
+                shrinkWrap: true,
+                padding: EdgeInsets.symmetric(vertical: r.p(6)),
+                itemCount: _uploadedFiles.length,
+                separatorBuilder: (_, __) =>
+                    const Divider(height: 1, indent: 16, endIndent: 16),
+                itemBuilder: (context, i) {
+                  final file = _uploadedFiles[i];
+                  final dir = _fileRelDirs[file.path];
+                  return ListTile(
+                    dense: true,
+                    leading: FileTypeIcon.orElse(
+                      file.name,
+                      30,
+                      Icon(
+                        _getFileIcon(file.name),
+                        color: _getFileColor(file.name),
+                      ),
+                    ),
+                    title: Text(
+                      file.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: Text(
+                      '${file.extension?.toUpperCase() ?? _baseName(file.name).split('.').last.toUpperCase()}'
+                      ' \u2022 ${_getFileSizeString(file.size)}'
+                      '${dir != null ? ' \u2022 $dir' : ''}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.close, size: 20),
+                      color: Colors.red,
+                      onPressed: () => setState(() {
+                        _fileRelDirs.remove(file.path);
+                        _uploadedFiles.remove(file);
+                      }),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ── Classification (inline expanding list) ────────────────────────────────
+  static const _classificationOptions = <({String value, String hint, Color color})>[
+    (value: 'General', hint: 'Everyday document, no special handling', color: Color(0xFF16A34A)),
+    (value: 'Unclassified', hint: 'No sensitivity rating assigned', color: Color(0xFF64748B)),
+    (value: 'Internal Use Only', hint: 'Standard business document', color: Color(0xFF2563EB)),
+    (value: 'Corporate Confidential', hint: 'Sensitive, share only inside the company', color: Color(0xFFB45309)),
+    (value: 'Restricted', hint: 'Limited audience, handle with care', color: Color(0xFFEA580C)),
+    (value: 'Confidential', hint: 'Important, handle with priority', color: Color(0xFF7C3AED)),
+    (value: 'Secret', hint: 'Business critical, restricted handling', color: Color(0xFFE11D48)),
+  ];
+
+  Widget _buildClassificationField() {
+    final open = _classificationOpen;
+    final current = _classificationOptions.firstWhere(
+      (o) => o.value == _selectedClassification,
+      orElse: () => _classificationOptions.first,
+    );
+    final hasValue = _selectedClassification.isNotEmpty;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: open ? UiColors.primary : UiColors.border,
+          width: open ? 1.5 : 1,
+        ),
+      ),
+      child: Column(
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(22),
+            onTap: () => setState(() => _classificationOpen = !open),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+              child: Row(
+                children: [
+                  const Icon(Icons.label_outline, color: UiColors.primary),
+                  const SizedBox(width: 14),
+                  if (hasValue) ...[
+                    Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: current.color,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                  ],
+                  Expanded(
+                    child: Text(
+                      hasValue ? current.value : 'Select a classification',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: hasValue ? FontWeight.w600 : FontWeight.w400,
+                        color: hasValue ? UiColors.ink : UiColors.textMuted,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    open
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    color: UiColors.textSecondary,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+            alignment: Alignment.topCenter,
+            child: open
+                ? Column(
+                    children: [
+                      const Divider(height: 1, color: UiColors.border),
+                      for (final o in _classificationOptions)
+                        InkWell(
+                          onTap: () => setState(() {
+                            _selectedClassification = o.value;
+                            _classificationOpen = false;
+                          }),
+                          child: Container(
+                            color: o.value == _selectedClassification
+                                ? UiColors.primaryTint
+                                : null,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 18,
+                              vertical: 12,
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 14,
+                                  height: 14,
+                                  decoration: BoxDecoration(
+                                    color: o.color,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 18),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        o.value,
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w600,
+                                          color: UiColors.ink,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        o.hint,
+                                        style: const TextStyle(
+                                          fontSize: 13.5,
+                                          color: UiColors.textSecondary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                if (o.value == _selectedClassification)
+                                  const Icon(
+                                    Icons.check_rounded,
+                                    color: UiColors.primary,
+                                    size: 20,
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      const SizedBox(height: 6),
+                    ],
+                  )
+                : const SizedBox(width: double.infinity),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Visibility radio cards ─────────────────────────────────────────────────
+  Widget _visibilityCard({
+    required ResponsiveHelper r,
+    required String value,
+    required IconData icon,
+    required String title,
+    required String subtitle,
+  }) {
+    final selected = _selectedSharingType == value;
+    return Padding(
+      padding: EdgeInsets.only(bottom: r.p(10)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(22),
+        onTap: () {
+          if (selected && value == 'Specific Users') {
+            _pickSpecificUsers();
+          } else if (!selected) {
+            _onSharingChanged(value);
+          }
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: EdgeInsets.all(r.p(14)),
+          decoration: BoxDecoration(
+            color: selected ? UiColors.primaryTint : Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(
+              color: selected ? UiColors.primary : UiColors.border,
+              width: selected ? 2 : 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: r.p(48),
+                height: r.p(48),
+                decoration: BoxDecoration(
+                  color: selected
+                      ? UiColors.primary
+                      : UiColors.primary.withAlpha(22),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  icon,
+                  color: selected ? Colors.white : UiColors.primary,
+                ),
+              ),
+              SizedBox(width: r.p(14)),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: r.sp(17),
+                        fontWeight: FontWeight.w600,
+                        color: UiColors.ink,
+                      ),
+                    ),
+                    SizedBox(height: r.p(2)),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: r.sp(13),
+                        color: UiColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(width: r.p(8)),
+              Icon(
+                selected
+                    ? Icons.radio_button_checked
+                    : Icons.radio_button_unchecked,
+                size: r.sp(28),
+                color: selected ? UiColors.primary : const Color(0xFF64748B),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Destination folder ─────────────────────────────────────────────────────
+  /// One tappable row: opens the folder picker (which can also create a
+  /// folder). The subtitle shows where the upload will go.
+  Widget _buildDestinationCard(ResponsiveHelper r) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(22),
+        onTap: _foldersLoading ? null : () => _showFolderSelector(context),
+        child: _card(
+          padding: EdgeInsets.symmetric(
+            horizontal: r.p(16),
+            vertical: r.p(14),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: r.p(48),
+                height: r.p(48),
+                decoration: BoxDecoration(
+                  color: UiColors.primary.withAlpha(30),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.drive_file_move_outline,
+                  color: UiColors.primary,
+                  size: r.sp(24),
+                ),
+              ),
+              SizedBox(width: r.p(14)),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Select Destination Folder',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: r.sp(16),
+                        fontWeight: FontWeight.w700,
+                        color: UiColors.ink,
+                      ),
+                    ),
+                    SizedBox(height: r.p(2)),
+                    Text(
+                      _selectedFolderId == null
+                          ? 'Root'
+                          : (_selectedFolderName ?? 'Selected folder'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: r.sp(14),
+                        color: UiColors.muted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              _foldersLoading
+                  ? SizedBox(
+                      width: r.p(20),
+                      height: r.p(20),
+                      child: const CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(
+                      Icons.chevron_right_rounded,
+                      color: UiColors.muted,
+                    ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Submit bar ─────────────────────────────────────────────────────────────
+  Widget _buildSubmitBar(ResponsiveHelper r) {
+    return Container(
+      color: UiColors.background,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(r.p(16), r.p(8), r.p(16), r.p(12)),
+          child: SizedBox(
+            width: double.infinity,
+            height: r.p(56),
+            child: ElevatedButton.icon(
+              onPressed: (_isLoading || _foldersLoading)
+                  ? null
+                  : _uploadDocument,
+              icon: _isLoading
+                  ? const SizedBox.shrink()
+                  : Icon(Icons.cloud_upload_outlined, size: r.sp(24)),
+              label: _isLoading
+                  ? SizedBox(
+                      width: r.p(22),
+                      height: r.p(22),
+                      child: const CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : Text(
+                      'Submit Document',
+                      style: TextStyle(
+                        fontSize: r.sp(18),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: UiColors.primary,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor: UiColors.primary.withAlpha(150),
+                disabledForegroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                shadowColor: UiColors.primary.withValues(alpha: 0.4),
+                elevation: 6,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   // ── Dispatch to the right picker ──────────────────────────────────────────
   Future<void> _triggerFilePicker() async {
     switch (_selectedUploadType) {
-      case 'single':
-        await _pickSingleFile();
-        break;
-      case 'multiple':
+      case 'files':
+        // Multi-select picker; picking a single file works the same way.
         await _pickMultipleFiles();
         break;
       case 'folder':
         await _pickFolder();
+        break;
+      case 'zip':
+        await _pickZip();
         break;
     }
   }
@@ -3292,10 +3414,10 @@ class DottedBrowseTile extends StatelessWidget {
       width: double.infinity,
       padding: EdgeInsets.symmetric(vertical: r.p(28)),
       decoration: BoxDecoration(
-        color: Colors.indigo.shade50.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(r.p(12)),
+        color: UiColors.primaryTint,
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: Colors.indigo.shade200,
+          color: UiColors.brightBlue,
           width: 1.5,
           // Dashed effect via custom painter below
         ),
@@ -3315,13 +3437,13 @@ class DottedBrowseTile extends StatelessWidget {
                   width: r.p(48),
                   height: r.p(48),
                   decoration: BoxDecoration(
-                    color: Colors.indigo.shade100,
+                    color: UiColors.iceBlue,
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
                     Icons.upload_outlined,
                     size: r.sp(26),
-                    color: Colors.indigo,
+                    color: UiColors.primary,
                   ),
                 ),
                 SizedBox(height: r.p(12)),
@@ -3330,7 +3452,7 @@ class DottedBrowseTile extends StatelessWidget {
                   style: TextStyle(
                     fontSize: r.sp(15),
                     fontWeight: FontWeight.w600,
-                    color: Colors.indigo.shade700,
+                    color: UiColors.primaryActive,
                   ),
                 ),
                 SizedBox(height: r.p(4)),
