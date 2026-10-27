@@ -44,7 +44,7 @@ class _RegisterPageState extends State<RegisterPage> {
     super.initState();
     _initializeApp();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      precacheImage(const AssetImage('assets/images/app-logo.png'), context);
+      precacheImage(const AssetImage('assets/images/digi-sanchika-logo.png'), context);
       _maybeShowPermissionsModal();
     });
   }
@@ -562,7 +562,7 @@ class _RegisterPageState extends State<RegisterPage> {
                             ],
                           ),
                           child: Image.asset(
-                            'assets/images/app-logo.png',
+                            'assets/images/digi-sanchika-logo.png',
                             fit: BoxFit.contain,
                             cacheHeight: 200,
                             cacheWidth: 200,

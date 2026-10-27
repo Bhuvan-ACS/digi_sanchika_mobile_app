@@ -137,7 +137,7 @@ class AppLogo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Image.asset(
-      'assets/images/app-logo.png',
+      'assets/images/digi-sanchika-logo.png',
       width: size,
       height: size,
       fit: fit,
