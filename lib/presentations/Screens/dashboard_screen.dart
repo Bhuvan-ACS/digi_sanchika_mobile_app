@@ -745,62 +745,62 @@ decoration: BoxDecoration(
           ),
         ),
         height10,
-//         Text(
-//             'Activity',
-//            style: w900_20Poppins(color: Colors.black)
-//           ),
-//           height10,
-//         ActivityFeed(
-//   activities: [
-//     ActivityItem(
-//       icon: Icons.check,
-//       iconColor: Colors.green,
-//       iconBackground: Colors.green.withOpacity(0.12),
-//       textSpans:  [
-//         TextSpan(text: 'You ',style:w400_15Poppins()),
-//         TextSpan(text: 'approved', style:w700_15Poppins()),
-//         TextSpan(text: " Ravi's edit request on ",style:w400_15Poppins()),
-//         TextSpan(text: 'recuirement.pptx',  style:w700_15Poppins()),
-//       ],
-//       timeAgo: '18 minutes ago',
-//     ),
-//     ActivityItem(
-//       icon: Icons.upload,
-//       iconColor: Colors.indigo,
-//       iconBackground: Colors.indigo.withOpacity(0.12),
-//       textSpans:  [
-//         TextSpan(text: 'You ',style:w400_15Poppins()),
-//         TextSpan(text: 'uploaded', style:w700_15Poppins()),
-//         TextSpan(text: ' 3 files to ',style:w400_15Poppins()),
-//         TextSpan(text: 'Payroll', style:w700_15Poppins()),
-//       ],
-//       timeAgo: '2 hours ago',
-//     ),
-//     ActivityItem(
-//       icon: Icons.share,
-//       iconColor: Colors.purple,
-//       iconBackground: Colors.purple.withOpacity(0.12),
-//       textSpans:  [
-//         TextSpan(text: 'Meera ',style:w400_15Poppins()),
-//         TextSpan(text: 'shared', style: w700_16Poppins()),
-//         TextSpan(text: ' Vendor Agreement.pdf with you',style:w400_15Poppins()),
-//       ],
-//       timeAgo: 'Yesterday',
-//     ),
-//     ActivityItem(
-//       icon: Icons.edit,
-//       iconColor: Colors.orange,
-//       iconBackground: Colors.orange.withOpacity(0.12),
-//       textSpans:  [
-//         TextSpan(text: 'You ',style:w400_15Poppins()),
-//         TextSpan(text: 'renamed', style: w700_16Poppins()),
-//         TextSpan(text: ' Invoice_final.pdf to ',style:w400_15Poppins()),
-//         TextSpan(text: 'Invoice March.pdf',style: w700_16Poppins()),
-//       ],
-//       timeAgo: '2 days ago',
-//     ),
-//   ],
-// )
+        Text(
+            'Activity',
+           style: w900_20Poppins(color: Colors.black)
+          ),
+          height10,
+        ActivityFeed(
+  activities: [
+    ActivityItem(
+      icon: Icons.check,
+      iconColor: Colors.green,
+      iconBackground: Colors.green.withOpacity(0.12),
+      textSpans:  [
+        TextSpan(text: 'You ',style:w400_15Poppins()),
+        TextSpan(text: 'approved', style:w700_15Poppins()),
+        TextSpan(text: " Ravi's edit request on ",style:w400_15Poppins()),
+        TextSpan(text: 'recuirement.pptx',  style:w700_15Poppins()),
+      ],
+      timeAgo: '18 minutes ago',
+    ),
+    ActivityItem(
+      icon: Icons.upload,
+      iconColor: Colors.indigo,
+      iconBackground: Colors.indigo.withOpacity(0.12),
+      textSpans:  [
+        TextSpan(text: 'You ',style:w400_15Poppins()),
+        TextSpan(text: 'uploaded', style:w700_15Poppins()),
+        TextSpan(text: ' 3 files to ',style:w400_15Poppins()),
+        TextSpan(text: 'Payroll', style:w700_15Poppins()),
+      ],
+      timeAgo: '2 hours ago',
+    ),
+    ActivityItem(
+      icon: Icons.share,
+      iconColor: Colors.purple,
+      iconBackground: Colors.purple.withOpacity(0.12),
+      textSpans:  [
+        TextSpan(text: 'Meera ',style:w400_15Poppins()),
+        TextSpan(text: 'shared', style: w700_16Poppins()),
+        TextSpan(text: ' Vendor Agreement.pdf with you',style:w400_15Poppins()),
+      ],
+      timeAgo: 'Yesterday',
+    ),
+    ActivityItem(
+      icon: Icons.edit,
+      iconColor: Colors.orange,
+      iconBackground: Colors.orange.withOpacity(0.12),
+      textSpans:  [
+        TextSpan(text: 'You ',style:w400_15Poppins()),
+        TextSpan(text: 'renamed', style: w700_16Poppins()),
+        TextSpan(text: ' Invoice_final.pdf to ',style:w400_15Poppins()),
+        TextSpan(text: 'Invoice March.pdf',style: w700_16Poppins()),
+      ],
+      timeAgo: '2 days ago',
+    ),
+  ],
+)
     ],
   ),
 ),

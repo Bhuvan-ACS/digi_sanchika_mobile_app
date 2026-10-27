@@ -1496,7 +1496,7 @@ Widget getTitle(int currentIndex) {
           Text(
             "${_displayUserName.isNotEmpty
                 ? _displayUserName[0].toUpperCase() + _displayUserName.substring(1)
-                : ''} ",
+                : ''} 👋",
             style: w700_24Poppins(color: Colors.black),
           ),
           height5,
