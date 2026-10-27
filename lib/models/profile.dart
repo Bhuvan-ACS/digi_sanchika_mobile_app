@@ -11,6 +11,10 @@ class UserProfile {
   final String? lastLoginIp;
   final int? failedLoginAttempts;
 
+  /// Not returned by the server yet; set from locally saved profile edits.
+  final String? designation;
+  final String? sinceYear;
+
   UserProfile({
     required this.employeeName,
     required this.employeeId,
@@ -22,7 +26,34 @@ class UserProfile {
     this.lastLoginAt,
     this.lastLoginIp,
     this.failedLoginAttempts,
+    this.designation,
+    this.sinceYear,
   });
+
+  /// Returns a copy with the given fields replaced; null keeps the current value.
+  UserProfile copyWith({
+    String? employeeName,
+    String? employeeId,
+    String? department,
+    String? email,
+    String? designation,
+    String? sinceYear,
+  }) {
+    return UserProfile(
+      employeeName: employeeName ?? this.employeeName,
+      employeeId: employeeId ?? this.employeeId,
+      department: department ?? this.department,
+      email: email ?? this.email,
+      isAdmin: isAdmin,
+      isActive: isActive,
+      createdAt: createdAt,
+      lastLoginAt: lastLoginAt,
+      lastLoginIp: lastLoginIp,
+      failedLoginAttempts: failedLoginAttempts,
+      designation: designation ?? this.designation,
+      sinceYear: sinceYear ?? this.sinceYear,
+    );
+  }
 
   factory UserProfile.fromJson(Map<String, dynamic> json) {
     final user =

@@ -1,0 +1,567 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [5 0 R 7 0 R 9 0 R 11 0 R] /Count 4 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Length 2027 >>
+stream
+BT
+/F1 10 Tf
+50 790 Td
+14 TL
+/F1 10 Tf
+(DIGI SANCHIKA DOCUMENT API AND TOKEN REFERENCE) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(CURRENT API BASE URL) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(The Flutter app currently uses this default base URL:) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(https://digisanchika.acstechnologies.co.in/api) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(The URL can be overridden by BASE_URL or API_BASE_URL in .env. The current .env file does not define either variabl) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(The Dart code calls paths such as /documents; with the default base URL, the final URL is:) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(https://digisanchika.acstechnologies.co.in/api/documents) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(HOW THE APP STORES AND SENDS TOKENS) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(After login, the app reads these response fields:) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(  ? Access token: `accessToken`, `access_token`, or `token`) Tj
+T*
+/F1 10 Tf
+(  ? Refresh token: `refreshToken`, `refresh_token`, or `refresh`) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(Tokens are stored securely using Flutter Secure Storage:) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(  ? `access_token`) Tj
+T*
+/F1 10 Tf
+(  ? `refresh_token`) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(Every request made through ApiClient.instance.dio automatically adds:) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(Authorization: Bearer <access_token>) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(When the API returns 401, the app calls POST /api/auth/refresh with the refresh token, saves the returned tokens, a) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(TOKEN COMPARISON BY REQUEST TYPE) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(| API request | Token behavior | Reason |) Tj
+T*
+/F1 10 Tf
+(|---|---|---|) Tj
+T*
+/F1 10 Tf
+(| Login | No existing access token | Creates the session token |) Tj
+T*
+/F1 10 Tf
+(| Normal document/folder API | Bearer access token automatically added | Uses ApiClient.instance.dio |) Tj
+T*
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 4 0 R >>
+endobj
+6 0 obj
+<< /Length 1998 >>
+stream
+BT
+/F1 10 Tf
+50 790 Td
+14 TL
+/F1 10 Tf
+(| Publish/unpublish | Bearer access token automatically added | Protected user action |) Tj
+T*
+/F1 10 Tf
+(| Download URL request | Bearer access token automatically added | Server checks permission |) Tj
+T*
+/F1 10 Tf
+(| Download from presigned URL | Usually no Bearer token | URL already contains temporary authorization |) Tj
+T*
+/F1 10 Tf
+(| Upload URL request | Bearer access token automatically added | Server creates upload permission |) Tj
+T*
+/F1 10 Tf
+(| PUT to presigned upload URL | Usually no Bearer token | Storage service validates the signed URL |) Tj
+T*
+/F1 10 Tf
+(| Token refresh | Refresh token in request body | Refresh endpoint issues a new access token |) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(AUTHENTICATION APIS) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(POST /api/auth/login) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(Request fields accepted by the app:) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(json) Tj
+T*
+/F1 10 Tf
+({) Tj
+T*
+/F1 10 Tf
+("email": "employee-or-email",) Tj
+T*
+/F1 10 Tf
+("employeeId": "employee-or-email",) Tj
+T*
+/F1 10 Tf
+("employee_id": "employee-or-email",) Tj
+T*
+/F1 10 Tf
+("username": "employee-or-email",) Tj
+T*
+/F1 10 Tf
+("password": "password") Tj
+T*
+/F1 10 Tf
+(}) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(The response must return an access token using one of accessToken, access_token, or token. It should also return a ) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(POST /api/auth/refresh) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(json) Tj
+T*
+/F1 10 Tf
+({) Tj
+T*
+/F1 10 Tf
+("refreshToken": "refresh-token",) Tj
+T*
+/F1 10 Tf
+("refresh_token": "refresh-token") Tj
+T*
+/F1 10 Tf
+(}) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(GET /api/auth/me) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(Returns the authenticated user used by the Home, Documents, Library, sharing, and permission screens.) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(DOCUMENT APIS USED BY THE CURRENT UI) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+ET
+endstream
+endobj
+7 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 6 0 R >>
+endobj
+8 0 obj
+<< /Length 2665 >>
+stream
+BT
+/F1 10 Tf
+50 790 Td
+14 TL
+/F1 10 Tf
+(| Method | URL | Token | Purpose |) Tj
+T*
+/F1 10 Tf
+(|---|---|---|---|) Tj
+T*
+/F1 10 Tf
+(| GET | /api/documents | Bearer | Load Home and My Documents files |) Tj
+T*
+/F1 10 Tf
+(| GET | /api/documents?folderId={folderId} | Bearer | Load files inside a folder |) Tj
+T*
+/F1 10 Tf
+(| GET | /api/documents/{documentId} | Bearer | Load document details |) Tj
+T*
+/F1 10 Tf
+(| DELETE | /api/documents/{documentId} | Bearer | Delete a document |) Tj
+T*
+/F1 10 Tf
+(| GET | /api/documents/{documentId}/view-url | Bearer | Get a preview/view URL |) Tj
+T*
+/F1 10 Tf
+(| GET | /api/documents/{documentId}/download-url | Bearer | Check permission and get download URL |) Tj
+T*
+/F1 10 Tf
+(| POST | /api/documents/{documentId}/publish | Bearer | Publish a document to Library |) Tj
+T*
+/F1 10 Tf
+(| POST | /api/documents/{documentId}/unpublish | Bearer | Remove a document from Library |) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(The document response should include id, name, original_filename, folder_id, mime_type, file_size_bytes, allow_down) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(FOLDER APIS USED BY THE CURRENT UI) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(| Method | URL | Token | Purpose |) Tj
+T*
+/F1 10 Tf
+(|---|---|---|---|) Tj
+T*
+/F1 10 Tf
+(| GET | /api/folders | Bearer | Load folder cards |) Tj
+T*
+/F1 10 Tf
+(| POST | /api/folders | Bearer | Create a folder |) Tj
+T*
+/F1 10 Tf
+(| GET | /api/folders/{folderId} | Bearer | Load folder metadata and hierarchy |) Tj
+T*
+/F1 10 Tf
+(| DELETE | /api/folders/{folderId} | Bearer | Delete a folder |) Tj
+T*
+/F1 10 Tf
+(| POST | /api/folders/{folderId}/publish | Bearer | Publish a complete folder tree |) Tj
+T*
+/F1 10 Tf
+(| POST | /api/folders/{folderId}/unpublish | Bearer | Unpublish a folder |) Tj
+T*
+/F1 10 Tf
+(| GET | /api/folders/{folderId}/contents | Bearer | Browse folder contents, if supported |) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(The folder response should preserve id, name, parent_id, created_at, documents, and child folders.) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(LIBRARY APIS) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(| Method | URL | Token | Purpose |) Tj
+T*
+/F1 10 Tf
+(|---|---|---|---|) Tj
+T*
+/F1 10 Tf
+(| GET | /api/library | Bearer | Load published documents and folders |) Tj
+T*
+/F1 10 Tf
+(| GET | /api/library/folders | Bearer | Load published folder cards |) Tj
+T*
+/F1 10 Tf
+(| GET | /api/library/folders/{folderId} | Bearer | Browse a published folder |) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(The publish response should contain the new state:) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(json) Tj
+T*
+/F1 10 Tf
+({) Tj
+T*
+/F1 10 Tf
+("success": true,) Tj
+T*
+ET
+endstream
+endobj
+9 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 8 0 R >>
+endobj
+10 0 obj
+<< /Length 2066 >>
+stream
+BT
+/F1 10 Tf
+50 790 Td
+14 TL
+/F1 10 Tf
+("folderId": "folder-id",) Tj
+T*
+/F1 10 Tf
+("isPublishedToLibrary": true) Tj
+T*
+/F1 10 Tf
+(}) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(UPLOAD APIS) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(| Method | URL | Token | Purpose |) Tj
+T*
+/F1 10 Tf
+(|---|---|---|---|) Tj
+T*
+/F1 10 Tf
+(| POST | /api/documents/upload-url | Bearer | Create a signed upload URL |) Tj
+T*
+/F1 10 Tf
+(| PUT | /api/documents/upload/{documentId} | Signed URL rules | Upload file bytes |) Tj
+T*
+/F1 10 Tf
+(| POST | /api/documents/{documentId}/confirm-upload | Bearer | Finalize upload metadata |) Tj
+T*
+/F1 10 Tf
+(| POST | /api/documents/bulk-upload-urls | Bearer | Create multiple signed upload URLs |) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(Upload metadata must preserve folderId, fileName, fileSize, mimeType, and allowDownload.) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(DOWNLOAD APIS) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(| Method | URL | Token | Purpose |) Tj
+T*
+/F1 10 Tf
+(|---|---|---|---|) Tj
+T*
+/F1 10 Tf
+(| GET | /api/folders/{folderId}/download-url | Bearer | Check folder access and get ZIP URL |) Tj
+T*
+/F1 10 Tf
+(| GET | /api/folders/{folderId}/download | Bearer or signed URL | Download ZIP bytes |) Tj
+T*
+/F1 10 Tf
+(| GET | /api/folders/{folderId}/download-manifest | Bearer | Return recursive folder/file manifest |) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(The ZIP must preserve the root folder, nested folders, original file names, and permitted documents.) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(IMPORTANT CURRENT BACKEND CHECK) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(The Flutter client is prepared to use bearer tokens, but the local Backend/app/auth.py login response currently ret) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(Therefore, the production authentication API must return token fields recognized by the Flutter client. Otherwise, ) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(Do not put access tokens or refresh tokens in URLs. Do not include real token values in logs or documentation.) Tj
+T*
+ET
+endstream
+endobj
+11 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 10 0 R >>
+endobj
+xref
+0 12
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000134 00000 n 
+0000000204 00000 n 
+0000002283 00000 n 
+0000002409 00000 n 
+0000004459 00000 n 
+0000004585 00000 n 
+0000007302 00000 n 
+0000007428 00000 n 
+0000009547 00000 n 
+trailer
+<< /Size 12 /Root 1 0 R >>
+startxref
+9675
+%%EOF
