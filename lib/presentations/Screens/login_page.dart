@@ -51,7 +51,7 @@ class _LoginPageState extends State<LoginPage> {
     super.initState();
     _initializeApp();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      precacheImage(const AssetImage('assets/images/app-logo.png'), context);
+      precacheImage(const AssetImage('assets/images/digi-sanchika-logo.png'), context);
       _maybeShowPermissionsModal();
     });
   }
@@ -390,7 +390,7 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                       child: Center(
                         child: Image.asset(
-                          'assets/images/app-logo.png',
+                          'assets/images/digi-sanchika-logo.png',
                           width: r.p(30),
                           height: r.p(30),
                           fit: BoxFit.contain,

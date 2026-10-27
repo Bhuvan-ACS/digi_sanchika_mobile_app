@@ -1,0 +1,402 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [5 0 R 7 0 R 9 0 R] /Count 3 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Length 1888 >>
+stream
+BT
+/F1 10 Tf
+50 790 Td
+14 TL
+/F1 15 Tf
+(DIGI SANCHIKA ? REQUIRED API REFERENCE) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(This document lists the API contracts required by the refined Home, My Documents, and Library UI.) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(BASE URL AND AUTHENTICATION) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(All endpoints use the configured API base URL. Protected requests send:) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(Authorization: Bearer <access-token>) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(Core session endpoints:) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(  ? `POST /api/auth/login`) Tj
+T*
+/F1 10 Tf
+(  ? `POST /api/auth/logout`) Tj
+T*
+/F1 10 Tf
+(  ? `POST /api/auth/refresh`) Tj
+T*
+/F1 10 Tf
+(  ? `GET /api/auth/me`) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(HOME AND MY DOCUMENTS) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(  ? `GET /api/documents`) Tj
+T*
+/F1 10 Tf
+(  ? `GET /api/documents?folderId={folderId}`) Tj
+T*
+/F1 10 Tf
+(  ? `GET /api/documents/{documentId}`) Tj
+T*
+/F1 10 Tf
+(  ? `DELETE /api/documents/{documentId}`) Tj
+T*
+/F1 10 Tf
+(  ? `GET /api/folders`) Tj
+T*
+/F1 10 Tf
+(  ? `POST /api/folders`) Tj
+T*
+/F1 10 Tf
+(  ? `GET /api/folders/{folderId}`) Tj
+T*
+/F1 10 Tf
+(  ? `DELETE /api/folders/{folderId}`) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(Folder contents should return { documents, folders, count } and preserve folderId, parentId, names, dates, and perm) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(UPLOAD) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(  ? `POST /api/documents/upload-url`) Tj
+T*
+/F1 10 Tf
+(  ? `PUT /api/documents/upload/{documentId}`) Tj
+T*
+/F1 10 Tf
+(  ? `POST /api/documents/{documentId}/confirm-upload`) Tj
+T*
+/F1 10 Tf
+(  ? `POST /api/documents/bulk-upload-urls`) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(Upload metadata must preserve folderId, fileName, fileSize, mimeType, and allowDownload.) Tj
+T*
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 4 0 R >>
+endobj
+6 0 obj
+<< /Length 1715 >>
+stream
+BT
+/F1 10 Tf
+50 790 Td
+14 TL
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(LIBRARY AND PUBLISHING) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(Document publishing:) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(  ? `POST /api/documents/{documentId}/publish`) Tj
+T*
+/F1 10 Tf
+(  ? `POST /api/documents/{documentId}/unpublish`) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(Folder publishing:) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(  ? `POST /api/folders/{folderId}/publish`) Tj
+T*
+/F1 10 Tf
+(  ? `POST /api/folders/{folderId}/unpublish`) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(Library retrieval:) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(  ? `GET /api/library`) Tj
+T*
+/F1 10 Tf
+(  ? `GET /api/library/folders`) Tj
+T*
+/F1 10 Tf
+(  ? `GET /api/library/folders/{folderId}`) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(The publish response should include isPublishedToLibrary, so the UI can switch between ?Publish to Library? and ?Un) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(DOWNLOADS) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(Document download:) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(  ? `GET /api/documents/{documentId}/download-url`) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(Folder download:) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(  ? `GET /api/folders/{folderId}/download-url`) Tj
+T*
+/F1 10 Tf
+(  ? `GET /api/folders/{folderId}/download`) Tj
+T*
+/F1 10 Tf
+(  ? `GET /api/folders/{folderId}/download-manifest`) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(Folder ZIP responses must preserve the root folder, nested folders, original file names, and download permissions.) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(SEARCH AND AI) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(  ? `POST /api/search/keyword`) Tj
+T*
+/F1 10 Tf
+(  ? `POST /api/search/semantic`) Tj
+T*
+ET
+endstream
+endobj
+7 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 6 0 R >>
+endobj
+8 0 obj
+<< /Length 1299 >>
+stream
+BT
+/F1 10 Tf
+50 790 Td
+14 TL
+/F1 10 Tf
+(  ? `GET /api/ai/status`) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(Search payloads should support query, scope, and limit.) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(SHARING AND NOTIFICATIONS) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(Sharing:) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(  ? `GET /api/shares/users`) Tj
+T*
+/F1 10 Tf
+(  ? `GET /api/shares/shared-with-me`) Tj
+T*
+/F1 10 Tf
+(  ? `GET /api/shares/shared-by-me`) Tj
+T*
+/F1 10 Tf
+(  ? `GET|POST|PATCH /api/shares/documents/{documentId}`) Tj
+T*
+/F1 10 Tf
+(  ? `GET|POST|PATCH /api/shares/folders/{folderId}`) Tj
+T*
+/F1 10 Tf
+(  ? `POST /api/shares/documents/revoke/{shareId}`) Tj
+T*
+/F1 10 Tf
+(  ? `POST /api/shares/folders/revoke/{shareId}`) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(Notifications:) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(  ? `GET /api/notifications`) Tj
+T*
+/F1 10 Tf
+(  ? `POST /api/notifications/{notificationId}/read`) Tj
+T*
+/F1 10 Tf
+(  ? `POST /api/notifications/read-all`) Tj
+T*
+/F1 10 Tf
+(  ? `DELETE /api/notifications/{notificationId}`) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(MINIMUM PRODUCTION REQUIREMENTS) Tj
+T*
+/F1 10 Tf
+() Tj
+T*
+/F1 10 Tf
+(The backend must enforce authenticated ownership, folder hierarchy, persistent publish state, duplicate-publish pro) Tj
+T*
+ET
+endstream
+endobj
+9 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 8 0 R >>
+endobj
+xref
+0 10
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000127 00000 n 
+0000000197 00000 n 
+0000002137 00000 n 
+0000002263 00000 n 
+0000004030 00000 n 
+0000004156 00000 n 
+0000005507 00000 n 
+trailer
+<< /Size 10 /Root 1 0 R >>
+startxref
+5633
+%%EOF
