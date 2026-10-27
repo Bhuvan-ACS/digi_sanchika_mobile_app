@@ -199,7 +199,7 @@ class _SplashScreenState extends State<SplashScreen>
                         ),
                         child: Center(
                           child: Image.asset(
-                            'assets/images/app-logo.png',
+                            'assets/images/digi-sanchika-logo.png',
                             width: 44,
                             height: 44,
                             fit: BoxFit.contain,
