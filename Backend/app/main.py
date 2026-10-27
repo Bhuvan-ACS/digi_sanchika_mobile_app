@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response, JSONResponse
 from auth import router as auth_router
 import os
+import json
 import mimetypes
 from typing import Tuple
 from datetime import datetime
@@ -63,6 +64,7 @@ app.add_middleware(
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+METADATA_FILE = os.path.join(BASE_DIR, "digi_sanchika_metadata.json")
 
 # Converted previews cache
 CONVERTED_DIR = os.path.join(BASE_DIR, "converted")
@@ -76,6 +78,62 @@ pending_uploads = {}
 
 # In-memory push token storage (replace with DB in production)
 push_tokens_db = {}  # token -> metadata dict
+
+# Lightweight persistent metadata for this backend's file-based storage.  The
+# production service can replace these helpers with its database repository;
+# keeping the records on disk is important here because folders and publishing
+# must survive a process restart.
+def _read_metadata() -> dict:
+    try:
+        with open(METADATA_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return {
+                "documents": data.get("documents", {}),
+                "folders": data.get("folders", {}),
+                "published_folders": data.get("published_folders", {}),
+            }
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return {"documents": {}, "folders": {}, "published_folders": {}}
+
+
+def _write_metadata(data: dict) -> None:
+    temp_file = f"{METADATA_FILE}.tmp"
+    with open(temp_file, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    os.replace(temp_file, METADATA_FILE)
+
+
+def _document_metadata(document_id: str) -> Optional[dict]:
+    return _read_metadata()["documents"].get(document_id)
+
+
+def _folder_record(folder_id: str) -> Optional[dict]:
+    return _read_metadata()["folders"].get(folder_id)
+
+
+def _folder_tree(folder_id: str, metadata: Optional[dict] = None) -> dict:
+    metadata = metadata or _read_metadata()
+    folder = metadata["folders"].get(folder_id)
+    if not folder:
+        raise HTTPException(status_code=404, detail="Folder not found")
+    children = [
+        _folder_tree(child_id, metadata)
+        for child_id, child in metadata["folders"].items()
+        if child.get("parent_id") == folder_id
+    ]
+    documents = [
+        doc for doc in metadata["documents"].values()
+        if doc.get("folder_id") == folder_id
+    ]
+    return {**folder, "documents": documents, "children": children}
+
+
+def _published_folder_ids(metadata: Optional[dict] = None) -> set:
+    metadata = metadata or _read_metadata()
+    return {
+        folder_id for folder_id, value in metadata["published_folders"].items()
+        if value.get("published") is True
+    }
 
 # -------- Helpers --------
 def _find_file_by_id(document_id: str) -> Tuple[str, str]:
@@ -336,6 +394,19 @@ async def upload_document(
         contents = await file.read()
         with open(file_path, "wb") as f:
             f.write(contents)
+
+        metadata = _read_metadata()
+        metadata["documents"][timestamp] = {
+            "id": timestamp,
+            "original_filename": file.filename,
+            "file_name": filename,
+            "mime_type": _guess_mime_type(filename),
+            "file_size_bytes": len(contents),
+            "created_at": datetime.now().isoformat(),
+            "folder_id": None,
+            "allow_download": True,
+        }
+        _write_metadata(metadata)
         
         # Return document info
         return {
@@ -363,13 +434,15 @@ async def upload_document(
 
 # Get All Documents
 @app.get("/api/documents")
-async def get_documents():
+async def get_documents(request: Request):
     """
     Retrieve all uploaded documents.
     
     Returns a list of documents with basic information.
     """
     try:
+        metadata = _read_metadata()
+        requested_folder_id = request.query_params.get("folderId") or request.query_params.get("folder_id")
         documents = []
         if os.path.exists(UPLOAD_DIR):
             for filename in os.listdir(UPLOAD_DIR):
@@ -380,8 +453,12 @@ async def get_documents():
                     # Extract original name if possible
                     original_name = filename.split('_', 1)[1] if '_' in filename else filename
                     
+                    document_id = filename.split("_")[0] if "_" in filename else "unknown"
+                    stored = metadata["documents"].get(document_id, {})
+                    if requested_folder_id is not None and stored.get("folder_id") != requested_folder_id:
+                        continue
                     documents.append({
-                        "id": filename.split("_")[0] if "_" in filename else "unknown",
+                        "id": document_id,
                         "filename": filename,
                         "original_name": original_name,
                         "original_filename": original_name,
@@ -393,20 +470,35 @@ async def get_documents():
                         "created_at": datetime.fromtimestamp(stat.st_ctime).isoformat(),
                         "mime_type": _guess_mime_type(filename),
                         "file_type": os.path.splitext(filename)[1].lower().replace('.', '') or 'unknown'
+                        ,"folder_id": stored.get("folder_id"),
+                        "allow_download": stored.get("allow_download", True),
+                        "is_published_to_library": stored.get("is_published_to_library", False),
                     })
+
+        if requested_folder_id is None:
+            # Include metadata-only records if their file is still available.
+            # Filesystem enumeration above remains the source of truth for bytes.
+            pass
         
+        child_folders = []
+        if requested_folder_id is not None:
+            child_folders = [
+                folder for folder in metadata["folders"].values()
+                if folder.get("parent_id") == requested_folder_id
+            ]
         return {
             "status": "success",
             "count": len(documents),
-            "documents": documents
+            "documents": documents,
+            "folders": child_folders,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch documents: {str(e)}")
 
 # Alias without /api (mobile app currently calls /documents)
 @app.get("/documents")
-async def get_documents_alias():
-    return await get_documents()
+async def get_documents_alias(request: Request):
+    return await get_documents(request)
 
 # Get Document Details
 @app.get("/api/documents/{document_id}")
@@ -639,6 +731,7 @@ async def get_upload_url(request: Request):
     )
     mime_type = data.get("mimeType") or data.get("mime_type")
     file_size = data.get("fileSize") or data.get("file_size") or data.get("size")
+    folder_id = data.get("folderId") or data.get("folder_id")
 
     document_id = str(uuid4())
     safe_name = _safe_filename(file_name)
@@ -649,6 +742,8 @@ async def get_upload_url(request: Request):
         "mime_type": mime_type,
         "file_size": file_size,
         "created_at": datetime.now().isoformat(),
+        "folder_id": folder_id,
+        "allow_download": data.get("allowDownload", data.get("allow_download", True)),
     }
 
     return {
@@ -672,6 +767,7 @@ async def get_bulk_upload_urls(request: Request):
         )
         mime_type = f.get("mimeType") or f.get("mime_type")
         file_size = f.get("fileSize") or f.get("file_size") or f.get("size")
+        folder_id = f.get("folderId") or f.get("folder_id")
 
         document_id = str(uuid4())
         safe_name = _safe_filename(file_name)
@@ -682,6 +778,8 @@ async def get_bulk_upload_urls(request: Request):
             "mime_type": mime_type,
             "file_size": file_size,
             "created_at": datetime.now().isoformat(),
+            "folder_id": folder_id,
+            "allow_download": f.get("allowDownload", f.get("allow_download", True)),
         }
 
         uploads.append(
@@ -737,7 +835,20 @@ async def confirm_upload(document_id: str, request: Request):
         else:
             _set_conversion_status(document_id, "completed", None)
 
-    # Keep metadata for now; in real app, persist to DB
+        metadata = _read_metadata()
+        metadata["documents"][document_id] = {
+            "id": document_id,
+            "original_filename": meta.get("original_name", stored_name),
+            "file_name": stored_name,
+            "mime_type": meta.get("mime_type") or _guess_mime_type(stored_name),
+            "file_size_bytes": os.path.getsize(file_path) if os.path.exists(file_path) else meta.get("file_size", 0),
+            "created_at": meta.get("created_at", datetime.now().isoformat()),
+            "folder_id": meta.get("folder_id"),
+            "allow_download": meta.get("allow_download", True),
+            "is_published_to_library": False,
+        }
+        _write_metadata(metadata)
+
     return {"status": "success", "documentId": document_id}
 
 # -------- Conversion / Preview helpers --------
@@ -799,6 +910,7 @@ async def health_check():
 class FolderCreate(BaseModel):
     name: str
     parent_id: Optional[str] = None
+    parentId: Optional[str] = None
 
 class FolderResponse(BaseModel):
     id: str
@@ -806,53 +918,217 @@ class FolderResponse(BaseModel):
     parent_id: Optional[str] = None
     created_at: str
 
-# In-memory storage for folders (replace with database later)
-folders_db = {}
+# Backwards-compatible cache; persistent records are stored by _read_metadata.
+folders_db = _read_metadata()["folders"]
 
 # Folder endpoints
 @app.post("/api/folders", response_model=FolderResponse)
 async def create_folder(folder: FolderCreate):
     folder_id = str(datetime.now().timestamp()).replace('.', '')
+    metadata = _read_metadata()
+    parent_id = folder.parent_id or folder.parentId
     
     new_folder = {
         "id": folder_id,
         "name": folder.name,
-        "parent_id": folder.parent_id,
+        "parent_id": parent_id,
         "created_at": datetime.now().isoformat()
     }
-    
-    folders_db[folder_id] = new_folder
+    metadata["folders"][folder_id] = new_folder
+    _write_metadata(metadata)
     
     return new_folder
 
 @app.get("/api/folders")
-async def get_folders():
+async def get_folders(request: Request):
+    metadata = _read_metadata()
+    parent_id = request.query_params.get("parentId") or request.query_params.get("parent_id")
+    folders = list(metadata["folders"].values())
+    if parent_id is not None:
+        folders = [f for f in folders if f.get("parent_id") == parent_id]
     return {
         "status": "success",
-        "folders": list(folders_db.values())
+        "folders": folders
     }
 
 @app.get("/api/folders/{folder_id}")
 async def get_folder(folder_id: str):
-    if folder_id not in folders_db:
+    metadata = _read_metadata()
+    if folder_id not in metadata["folders"]:
         raise HTTPException(status_code=404, detail="Folder not found")
     
     return {
         "status": "success",
-        "folder": folders_db[folder_id]
+        "folder": _folder_tree(folder_id, metadata)
     }
 
 @app.delete("/api/folders/{folder_id}")
 async def delete_folder(folder_id: str):
-    if folder_id not in folders_db:
+    metadata = _read_metadata()
+    if folder_id not in metadata["folders"]:
         raise HTTPException(status_code=404, detail="Folder not found")
-    
-    del folders_db[folder_id]
+    descendants = []
+    def collect(parent_id):
+        for child_id, child in metadata["folders"].items():
+            if child.get("parent_id") == parent_id:
+                descendants.append(child_id)
+                collect(child_id)
+    collect(folder_id)
+    for removed_id in [folder_id, *descendants]:
+        metadata["folders"].pop(removed_id, None)
+        metadata["published_folders"].pop(removed_id, None)
+    _write_metadata(metadata)
     
     return {
         "status": "success",
         "message": f"Folder {folder_id} deleted"
     }
+
+
+# -------- Library publishing and folder download --------
+@app.post("/api/documents/{document_id}/publish")
+@app.post("/documents/{document_id}/publish")
+async def publish_document(document_id: str):
+    metadata = _read_metadata()
+    if not _document_metadata(document_id):
+        filename, file_path = _find_file_by_id(document_id)
+        metadata["documents"][document_id] = {
+            "id": document_id,
+            "original_filename": filename.split("_", 1)[-1],
+            "file_name": filename,
+            "mime_type": _guess_mime_type(filename),
+            "file_size_bytes": os.path.getsize(file_path),
+            "created_at": datetime.now().isoformat(),
+            "folder_id": None,
+            "allow_download": True,
+        }
+    metadata["documents"][document_id]["is_published_to_library"] = True
+    _write_metadata(metadata)
+    return {"success": True, "message": "Published"}
+
+
+@app.post("/api/documents/{document_id}/unpublish")
+@app.post("/documents/{document_id}/unpublish")
+async def unpublish_document(document_id: str):
+    metadata = _read_metadata()
+    document = metadata["documents"].get(document_id)
+    if not document:
+        _find_file_by_id(document_id)
+        document = metadata["documents"].setdefault(document_id, {"id": document_id})
+    document["is_published_to_library"] = False
+    _write_metadata(metadata)
+    return {"success": True, "message": "Unpublished"}
+
+
+@app.get("/api/library")
+@app.get("/library")
+async def get_library():
+    metadata = _read_metadata()
+    documents = []
+    for document in metadata["documents"].values():
+        if document.get("is_published_to_library") is True:
+            documents.append(document)
+    return {"documents": documents, "folders": _library_root_folders(metadata)}
+
+
+def _library_root_folders(metadata: dict) -> list:
+    published = _published_folder_ids(metadata)
+    return [
+        folder for folder_id, folder in metadata["folders"].items()
+        if folder_id in published and folder.get("parent_id") not in published
+    ]
+
+
+@app.post("/api/folders/{folder_id}/publish")
+@app.post("/folders/{folder_id}/publish")
+async def publish_folder(folder_id: str):
+    metadata = _read_metadata()
+    if folder_id not in metadata["folders"]:
+        raise HTTPException(status_code=404, detail="Folder not found")
+    metadata["published_folders"][folder_id] = {
+        "folder_id": folder_id,
+        "published": True,
+        "published_at": datetime.now().isoformat(),
+    }
+    _write_metadata(metadata)
+    return {"success": True, "message": "Folder published", "folder": _folder_tree(folder_id, metadata)}
+
+
+@app.post("/api/folders/{folder_id}/unpublish")
+@app.post("/folders/{folder_id}/unpublish")
+async def unpublish_folder(folder_id: str):
+    metadata = _read_metadata()
+    metadata["published_folders"].pop(folder_id, None)
+    _write_metadata(metadata)
+    return {"success": True, "message": "Folder unpublished"}
+
+
+@app.get("/api/library/folders")
+@app.get("/library/folders")
+async def get_library_folders():
+    metadata = _read_metadata()
+    return {"folders": _library_root_folders(metadata)}
+
+
+@app.get("/api/library/folders/{folder_id}")
+@app.get("/library/folders/{folder_id}")
+async def get_library_folder(folder_id: str):
+    metadata = _read_metadata()
+    if folder_id not in _published_folder_ids(metadata):
+        raise HTTPException(status_code=403, detail="Folder is not published")
+    return _folder_tree(folder_id, metadata)
+
+
+def _zip_folder(folder_id: str, output_path: str) -> None:
+    metadata = _read_metadata()
+    tree = _folder_tree(folder_id, metadata)
+    with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as archive:
+        root_name = _safe_filename(tree["name"] or "Folder")
+        def add_node(node: dict, relative: str):
+            for document in node.get("documents", []):
+                if document.get("allow_download", True) is not True:
+                    continue
+                stored_name = document.get("file_name")
+                if not stored_name:
+                    continue
+                source = os.path.join(UPLOAD_DIR, stored_name)
+                if os.path.isfile(source):
+                    name = _safe_filename(document.get("original_filename", stored_name))
+                    archive.write(source, os.path.join(relative, name))
+            for child in node.get("children", []):
+                child_path = os.path.join(relative, _safe_filename(child["name"]))
+                add_node(child, child_path)
+        add_node(tree, root_name)
+
+
+@app.get("/api/folders/{folder_id}/download")
+@app.get("/folders/{folder_id}/download")
+async def download_folder(folder_id: str):
+    metadata = _read_metadata()
+    if folder_id not in metadata["folders"]:
+        raise HTTPException(status_code=404, detail="Folder not found")
+    zip_path = os.path.join(BASE_DIR, f"folder_{folder_id}.zip")
+    _zip_folder(folder_id, zip_path)
+    return FileResponse(zip_path, media_type="application/zip", filename=f"{_safe_filename(metadata['folders'][folder_id]['name'])}.zip")
+
+
+@app.get("/api/folders/{folder_id}/download-url")
+@app.get("/folders/{folder_id}/download-url")
+async def folder_download_url(folder_id: str, request: Request):
+    metadata = _read_metadata()
+    if folder_id not in metadata["folders"]:
+        raise HTTPException(status_code=404, detail="Folder not found")
+    origin = str(request.base_url).rstrip("/")
+    return {"url": f"{origin}/api/folders/{folder_id}/download", "fileName": f"{_safe_filename(metadata['folders'][folder_id]['name'])}.zip"}
+
+
+@app.get("/api/folders/{folder_id}/download-manifest")
+@app.get("/folders/{folder_id}/download-manifest")
+async def folder_download_manifest(folder_id: str):
+    metadata = _read_metadata()
+    if folder_id not in metadata["folders"]:
+        raise HTTPException(status_code=404, detail="Folder not found")
+    return _folder_tree(folder_id, metadata)
 
 if __name__ == "__main__":
     import uvicorn

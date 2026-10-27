@@ -3,10 +3,14 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:digi_sanchika/utils/app_fonts.dart';
+import 'package:digi_sanchika/widgets/file_type_icon.dart';
+import 'package:digi_sanchika/widgets/favorite_menu.dart';
+import 'package:digi_sanchika/widgets/section_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:digi_sanchika/widgets/dismiss_keyboard.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:digi_sanchika/models/document.dart';
+import 'package:digi_sanchika/models/folder.dart';
 import 'package:digi_sanchika/local_storage.dart';
 import 'package:digi_sanchika/services/document_library_service.dart';
 import 'package:path/path.dart' as path;
@@ -17,6 +21,13 @@ import 'package:digi_sanchika/services/my_documents_service.dart';
 import 'package:digi_sanchika/widgets/share_access_sheet.dart';
 import 'package:digi_sanchika/widgets/version_history_dialog.dart';
 import 'package:digi_sanchika/widgets/responsive_page.dart';
+import 'package:digi_sanchika/widgets/home_components.dart';
+import 'package:digi_sanchika/widgets/ai_sparkle_button.dart';
+import 'package:digi_sanchika/widgets/folder_illustration.dart';
+import 'package:digi_sanchika/widgets/responsive_document_gallery.dart';
+import 'package:digi_sanchika/widgets/layout_capsule.dart';
+import 'package:digi_sanchika/models/app_view_mode.dart';
+import 'package:digi_sanchika/presentations/Screens/folder_screen.dart';
 
 // Add enum for layout modes (SAME AS SHARED ME)
 enum LibraryViewMode { list, grid2x2, grid3x3, compact, detailed }
@@ -35,9 +46,17 @@ class _DocumentLibraryState extends State<DocumentLibrary>
   final DocumentOpenerService _documentOpener = DocumentOpenerService();
 
   String _searchQuery = '';
+
+  /// Document ids from the last AI search, in relevance order; null when the
+  /// list is filtered by plain text instead.
+  List<String>? _aiResultIds;
+  bool _aiSearching = false;
   String _selectedFilter = 'All';
+  String _selectedCategory = 'All Documents';
   List<Document> _publicDocuments = [];
   List<Document> _filteredDocuments = [];
+  List<Folder> _libraryFolders = [];
+  List<Folder> _filteredLibraryFolders = [];
   final bool _isDownloading = false;
   bool _isLoading = true;
   bool _hasError = false;
@@ -51,6 +70,19 @@ class _DocumentLibraryState extends State<DocumentLibrary>
 
   // NEW: Collapsible states for document cards
   final Map<String, bool> _expandedStates = {};
+
+  /// Published folder opened inside the Browse Library panel.
+  String? _openFolderId;
+  bool _showAllCollections = false;
+  /// Browse Library layout, shared by folder and document items.
+  ResponsiveDocumentViewMode _browseMode = ResponsiveDocumentViewMode.list;
+
+  static const _collectionAccents = [
+    Color(0xFF60A5FA),
+    Color(0xFFC084FC),
+    Color(0xFF6EE7B7),
+    Color(0xFFFDBA74),
+  ];
 
   @override
   void initState() {
@@ -78,8 +110,16 @@ class _DocumentLibraryState extends State<DocumentLibrary>
 
       // Try to load from backend first
       final documents = await _libraryService.fetchLibraryDocuments();
+      final folders = await _libraryService.fetchLibraryFolders();
 
       if (!mounted) return;
+
+      // Tag documents with their folder name so search matches it too.
+      final folderNames = {for (final f in folders) f.id: f.name};
+      for (final doc in documents) {
+        final name = folderNames[doc.folderId];
+        if (name != null) doc.folder = name;
+      }
 
       // Extract unique file types from documents
       final fileTypes = documents
@@ -91,6 +131,8 @@ class _DocumentLibraryState extends State<DocumentLibrary>
       setState(() {
         _publicDocuments = documents;
         _filteredDocuments = documents;
+        _libraryFolders = folders;
+        _filteredLibraryFolders = folders;
         availableFileTypes = ['All', ...fileTypes];
         _isLoading = false;
       });
@@ -123,6 +165,8 @@ class _DocumentLibraryState extends State<DocumentLibrary>
         setState(() {
           _publicDocuments = localDocs;
           _filteredDocuments = localDocs;
+          _libraryFolders = const [];
+          _filteredLibraryFolders = const [];
           availableFileTypes = ['All', ...fileTypes];
           _hasError = true;
           _errorMessage = 'Using cached data. No internet connection.';
@@ -158,7 +202,6 @@ class _DocumentLibraryState extends State<DocumentLibrary>
     }
   }
 
-
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -175,66 +218,195 @@ class _DocumentLibraryState extends State<DocumentLibrary>
 
   /// Filter documents based on search query
   void _filterDocuments(String query) {
-    if (query.isEmpty) {
-      setState(() {
-        _filteredDocuments = _publicDocuments;
-        _searchQuery = query;
-      });
-      return;
-    }
-
-    final lowercaseQuery = query.toLowerCase();
     setState(() {
       _searchQuery = query;
-      _filteredDocuments = _publicDocuments.where((doc) {
-        return doc.name.toLowerCase().contains(lowercaseQuery) ||
-            (doc.keyword.isNotEmpty &&
-                doc.keyword.toLowerCase().contains(lowercaseQuery)) ||
-            doc.type.toLowerCase().contains(lowercaseQuery) ||
-            (doc.owner.isNotEmpty &&
-                doc.owner.toLowerCase().contains(lowercaseQuery)) ||
-            (doc.folder.isNotEmpty &&
-                doc.folder.toLowerCase().contains(lowercaseQuery));
-      }).toList();
+      _aiResultIds = null;
+      _applyFilters();
     });
+  }
+
+  /// AI assistant search over the org library (POST /search/semantic).
+  Future<void> _runAiSearch(String query) async {
+    setState(() => _aiSearching = true);
+    final result = await MyDocumentsService.semanticSearch(
+      query: query,
+      scope: 'library',
+      limit: 50,
+    );
+    if (!mounted) return;
+    final results = result['results'];
+    setState(() {
+      _aiSearching = false;
+      _searchQuery = query;
+      _aiResultIds = result['success'] == true && results is List
+          ? results.map((r) => r['documentId'].toString()).toList()
+          : null;
+      _applyFilters();
+    });
+    if (result['success'] != true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${result['error'] ?? 'AI search failed'}. Showing name matches.',
+          ),
+        ),
+      );
+    }
+  }
+
+  static const Map<String, List<String>> _categoryKeywords = {
+    'HR Policies': [
+      'hr',
+      'policy',
+      'leave',
+      'holiday',
+      'posh',
+      'handbook',
+      'employee',
+    ],
+    'IOTIQ Certificates': [
+      'iotiq',
+      'certificate',
+      'iso',
+      'incorporation',
+      'trademark',
+      'compliance',
+      'license',
+    ],
+    'Infra Projects': [
+      'infra',
+      'civil',
+      'site',
+      'drawing',
+      'cad',
+      'construction',
+      'work plan',
+      'floor',
+    ],
+    'Finance Documents': [
+      'finance',
+      'tax',
+      'invoice',
+      'audit',
+      'salary',
+      'payroll',
+      'budget',
+      'billing',
+      'expense',
+    ],
+    'Software Projects': [
+      'software',
+      'code',
+      'api',
+      'architecture',
+      'srs',
+      'release',
+      'developer',
+      'sanchika',
+      'acs',
+    ],
+  };
+
+  void _applyFilters() {
+    final query = _searchQuery.trim().toLowerCase();
+    final categoryTerms = _categoryKeywords[_selectedCategory];
+
+    bool containsAny(String value, List<String>? terms) {
+      if (terms == null) return true;
+      return terms.any(value.contains);
+    }
+
+    bool matchesType(Document doc) {
+      final type = doc.type.toUpperCase();
+      final selectedType = _selectedFilter.toUpperCase();
+      final matchesSelectedType =
+          selectedType == 'ALL' ||
+          // Folders-only keeps every document so folder counts stay right;
+          // the loose document list is hidden in _buildDocumentsTab.
+          selectedType == 'FOLDERS' ||
+          type == selectedType ||
+          (selectedType == 'XLSX' && (type == 'XLS' || type == 'XLSX')) ||
+          (selectedType == 'DOCX' && (type == 'DOC' || type == 'DOCX')) ||
+          (selectedType == 'IMAGE' &&
+              const {
+                'PNG',
+                'JPG',
+                'JPEG',
+                'GIF',
+                'WEBP',
+                'IMAGE',
+              }.contains(type));
+      if (!matchesSelectedType) {
+        return false;
+      }
+      final selectedFileType = _selectedFileType.toUpperCase();
+      return selectedFileType == 'ALL' ||
+          type == selectedFileType ||
+          (selectedFileType == 'IMAGE' &&
+              const {
+                'PNG',
+                'JPG',
+                'JPEG',
+                'GIF',
+                'WEBP',
+                'IMAGE',
+              }.contains(type));
+    }
+
+    bool matchesSearch(Document doc) {
+      if (query.isEmpty) return true;
+      final searchable = [
+        doc.name,
+        doc.keyword,
+        doc.type,
+        doc.owner,
+        doc.folder,
+      ].join(' ').toLowerCase();
+      return searchable.contains(query);
+    }
+
+    final aiIds = _aiResultIds;
+    _filteredDocuments = _publicDocuments.where((doc) {
+      final searchable = [
+        doc.name,
+        doc.keyword,
+        doc.type,
+        doc.owner,
+        doc.folder,
+      ].join(' ').toLowerCase();
+      return containsAny(searchable, categoryTerms) &&
+          matchesType(doc) &&
+          (aiIds != null ? aiIds.contains(doc.id) : matchesSearch(doc));
+    }).toList();
+    if (aiIds != null) {
+      // Keep the AI relevance order returned by the server.
+      _filteredDocuments.sort(
+        (a, b) => aiIds.indexOf(a.id).compareTo(aiIds.indexOf(b.id)),
+      );
+    } else {
+      _filteredDocuments.sort((a, b) => b.uploadDate.compareTo(a.uploadDate));
+    }
+
+    _filteredLibraryFolders = _libraryFolders.where((folder) {
+      return query.isEmpty || folder.name.toLowerCase().contains(query);
+    }).toList();
   }
 
   /// Clear search and reset filter
   void _clearSearch() {
     _searchController.clear();
-    _filterDocuments('');
-    _selectedFileType = 'All';
-    _selectedFilter = 'All';
+    setState(() {
+      _searchQuery = '';
+      _aiResultIds = null;
+      _selectedFileType = 'All';
+      _selectedFilter = 'All';
+      _selectedCategory = 'All Documents';
+      _applyFilters();
+    });
   }
 
   List<Document> get _finalFilteredDocuments {
-    List<Document> filtered = _filteredDocuments.where((doc) {
-      final docType = doc.type.toUpperCase();
-      bool isExcelFile = docType == 'XLS' || docType == 'XLSX';
-
-      bool matchesFilter;
-      if (_selectedFilter == 'All') {
-        matchesFilter = true;
-      } else if (_selectedFilter == 'XLSX' && isExcelFile) {
-        matchesFilter = true;
-      } else {
-        matchesFilter = doc.type.toLowerCase().contains(
-          _selectedFilter.toLowerCase(),
-        );
-      }
-      return matchesFilter;
-    }).toList();
-
-    // Apply file type filter
-    if (_selectedFileType != 'All') {
-      filtered = filtered.where((doc) {
-        return doc.type.toUpperCase() == _selectedFileType;
-      }).toList();
-    }
-
-    // Sort by upload date (newest first)
-    filtered.sort((a, b) => b.uploadDate.compareTo(a.uploadDate));
-    return filtered;
+    return _filteredDocuments;
   }
 
   // ============ LAYOUT MODES IMPLEMENTATION ============
@@ -335,60 +507,823 @@ class _DocumentLibraryState extends State<DocumentLibrary>
 
   /// Method to build documents content based on view mode
   Widget _buildDocumentsContent(List<Document> documents) {
-    switch (_currentViewMode) {
-      case LibraryViewMode.list:
-        return ListView.builder(
-          padding: const EdgeInsets.only(bottom: 20),
-          itemCount: documents.length,
-          itemBuilder: (context, index) {
-            return _buildDocumentCard(documents[index], index);
-          },
-        );
-      case LibraryViewMode.grid2x2:
-        return GridView.builder(
-          padding: const EdgeInsets.all(16),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            childAspectRatio: 0.9,
-          ),
-          itemCount: documents.length,
-          itemBuilder: (context, index) {
-            return _buildDocumentGridItem(documents[index], index, 2);
-          },
-        );
-      case LibraryViewMode.grid3x3:
-        return GridView.builder(
-          padding: const EdgeInsets.all(16),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 3,
-            crossAxisSpacing: 8,
-            mainAxisSpacing: 8,
-            childAspectRatio: 0.85,
-          ),
-          itemCount: documents.length,
-          itemBuilder: (context, index) {
-            return _buildDocumentGridItem(documents[index], index, 3);
-          },
-        );
-      case LibraryViewMode.compact:
-        return ListView.builder(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          itemCount: documents.length,
-          itemBuilder: (context, index) {
-            return _buildDocumentCompactItem(documents[index], index);
-          },
-        );
-      case LibraryViewMode.detailed:
-        return ListView.builder(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          itemCount: documents.length,
-          itemBuilder: (context, index) {
-            return _buildDocumentDetailedItem(documents[index], index);
-          },
-        );
+    final gallery = ResponsiveDocumentGallery(
+      documents: documents,
+      mode: _browseMode,
+      shrinkWrap: true,
+      onView: _handleDocumentDoubleTap,
+      onOverflow: (document, anchorContext, isGrid) =>
+          _showDocumentActions(document, anchorContext, isGrid),
+      onVersions: _showDocumentVersions,
+      onDownload: (document) => _showDocumentActions(document),
+      onShare: _showShareDialog,
+    );
+
+    return gallery;
+  }
+
+  // ============ PUBLISHED COLLECTIONS ============
+
+  Map<String, Folder> get _libraryFolderById => {
+    for (final f in _libraryFolders) f.id: f,
+  };
+
+  /// Library documents grouped by their published folder, newest first.
+  /// Follows the current search, category and file-type filters.
+  List<_LibraryCollection> get _collections {
+    final folders = _libraryFolderById;
+    final groups = <String, List<Document>>{};
+    for (final doc in _finalFilteredDocuments) {
+      final id = doc.folderId;
+      if (id == null || !folders.containsKey(id)) continue;
+      groups.putIfAbsent(id, () => []).add(doc);
     }
+    return [
+      for (final e in groups.entries)
+        _LibraryCollection(folder: folders[e.key]!, documents: e.value),
+    ]..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+  }
+
+  /// Library documents that don't belong to a published folder.
+  List<Document> get _looseDocuments {
+    final folders = _libraryFolderById;
+    return _finalFilteredDocuments
+        .where((d) => d.folderId == null || !folders.containsKey(d.folderId))
+        .toList();
+  }
+
+  String _collectionDate(DateTime date, {bool withTime = false}) {
+    if (date.year <= 1970) return 'N/A';
+    final l = date.toLocal();
+    String two(int n) => n.toString().padLeft(2, '0');
+    final day = '${l.year}-${two(l.month)}-${two(l.day)}';
+    return withTime ? '$day ${two(l.hour)}:${two(l.minute)}' : day;
+  }
+
+  void _openCollection(String? folderId) {
+    setState(() => _openFolderId = folderId);
+  }
+
+  Widget _buildDocumentsTab() {
+    if (_isLoading) return _buildLoadingState();
+
+    final foldersOnly = _selectedFilter == 'FOLDERS';
+    final collections = _collections;
+    final loose = foldersOnly ? const <Document>[] : _looseDocuments;
+    final openFolder = _openFolderId == null
+        ? null
+        : _libraryFolderById[_openFolderId];
+    final openCollection = openFolder == null
+        ? null
+        : collections.where((c) => c.folder.id == openFolder.id).firstOrNull;
+
+    if (openFolder == null && collections.isEmpty && loose.isEmpty) {
+      if (foldersOnly) {
+        return const Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.folder_off_outlined,
+                size: 64,
+                color: Color(0xFF94A3B8),
+              ),
+              SizedBox(height: 16),
+              Text(
+                'No published folders',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF1E293B),
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+      return _buildEmptyState();
+    }
+
+    final visibleCollections = _showAllCollections
+        ? collections
+        : collections.take(4).toList();
+
+    return RefreshIndicator(
+      onRefresh: _loadPublicDocuments,
+      color: Colors.indigo,
+      child: ListView(
+        padding: const EdgeInsets.only(top: 4, bottom: 24),
+        children: [
+          if (openFolder == null && collections.isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: _buildCollectionsHeader(collections.length),
+            ),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: _buildCollectionsGrid(visibleCollections),
+            ),
+            const SizedBox(height: 18),
+          ],
+          SectionPanel(
+            // Lines up with the search bar's 16px gutter.
+            margin: const EdgeInsets.symmetric(horizontal: 16),
+            header: openFolder != null
+                ? _buildOpenFolderHeader(
+                    openFolder,
+                    openCollection?.documents.length ?? 0,
+                  )
+                : _buildBrowseHeader(collections.length + loose.length),
+            child: openFolder != null
+                ? (openCollection == null
+                      ? Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 24),
+                          child: Center(
+                            child: Text(
+                              'No matching documents in this folder',
+                              style: TextStyle(color: Colors.grey.shade600),
+                            ),
+                          ),
+                        )
+                      : _buildDocumentsContent(openCollection.documents))
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (_browseMode == ResponsiveDocumentViewMode.list)
+                        for (final c in collections) _buildFolderRow(c)
+                      else if (collections.isNotEmpty) ...[
+                        _buildFolderGrid(collections),
+                        if (loose.isNotEmpty) const SizedBox(height: 12),
+                      ],
+                      if (loose.isNotEmpty) _buildDocumentsContent(loose),
+                    ],
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCollectionsHeader(int count) {
+    return Row(
+      children: [
+        const Icon(
+          Icons.grid_view_rounded,
+          color: Color(0xFF0866E9),
+          size: 24,
+        ),
+        const SizedBox(width: 10),
+        const Expanded(
+          child: Text(
+            'Published Collections',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF0F172A),
+            ),
+          ),
+        ),
+        if (count > 4)
+          TextButton(
+            onPressed: () =>
+                setState(() => _showAllCollections = !_showAllCollections),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              foregroundColor: const Color(0xFF0866E9),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _showAllCollections ? 'Show less' : 'View all',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                Icon(
+                  _showAllCollections
+                      ? Icons.keyboard_arrow_up_rounded
+                      : Icons.chevron_right_rounded,
+                  size: 20,
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildCollectionsGrid(List<_LibraryCollection> collections) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const gap = 12.0;
+        final width = (constraints.maxWidth - gap) / 2;
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: [
+            for (var i = 0; i < collections.length; i++)
+              SizedBox(
+                width: width,
+                child: _buildCollectionCard(
+                  collections[i],
+                  _collectionAccents[i % _collectionAccents.length],
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _collectionMeta(IconData icon, String text) {
+    return Row(
+      children: [
+        Icon(icon, size: 14, color: const Color(0xFF94A3B8)),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCollectionCard(_LibraryCollection collection, Color accent) {
+    final count = collection.documents.length;
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(18),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => _openCollection(collection.folder.id),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFE1E7F0)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Stack(
+            children: [
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                height: 64,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topRight,
+                      end: Alignment.bottomLeft,
+                      colors: [
+                        accent.withValues(alpha: 0.30),
+                        accent.withValues(alpha: 0.0),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 14, 10, 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 46,
+                      height: 46,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEAF3FF),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: const FolderIllustration(size: 30),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            collection.folder.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Color(0xFF102A56),
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        const Icon(
+                          Icons.chevron_right_rounded,
+                          color: Color(0xFF64748B),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    _collectionMeta(
+                      Icons.calendar_today_outlined,
+                      '$count ${count == 1 ? 'item' : 'items'}',
+                    ),
+                    const SizedBox(height: 4),
+                    _collectionMeta(
+                      Icons.schedule_rounded,
+                      'Updated · ${_collectionDate(collection.updatedAt)}',
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBrowseHeader(int count) {
+    return Row(
+      children: [
+        const Icon(
+          Icons.description_outlined,
+          color: Color(0xFF0F172A),
+          size: 22,
+        ),
+        const SizedBox(width: 8),
+        const Expanded(
+          child: Text(
+            'Browse Library',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF0F172A),
+            ),
+          ),
+        ),
+        _buildBrowseLayoutToggle(),
+        const SizedBox(width: 10),
+        Text(
+          '$count ${count == 1 ? 'item' : 'items'}',
+          style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildOpenFolderHeader(Folder folder, int count) {
+    return Row(
+      children: [
+        IconButton(
+          tooltip: 'Back to library',
+          onPressed: () => _openCollection(null),
+          visualDensity: VisualDensity.compact,
+          icon: const Icon(Icons.arrow_back_rounded, color: Color(0xFF0F172A)),
+        ),
+        Expanded(
+          child: Text(
+            folder.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF0F172A),
+            ),
+          ),
+        ),
+        _buildBrowseLayoutToggle(),
+        const SizedBox(width: 10),
+        Text(
+          '$count ${count == 1 ? 'file' : 'files'}',
+          style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBrowseLayoutToggle() {
+    Widget seg(ResponsiveDocumentViewMode mode, IconData icon, String tip) {
+      final active = _browseMode == mode;
+      return Tooltip(
+        message: tip,
+        child: GestureDetector(
+          onTap: () => setState(() => _browseMode = mode),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            width: 32,
+            height: 30,
+            decoration: BoxDecoration(
+              color: active ? const Color(0xFF0095E8) : Colors.transparent,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Icon(
+              icon,
+              size: 18,
+              color: active ? Colors.white : const Color(0xFF526783),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          seg(ResponsiveDocumentViewMode.list, Icons.view_list_rounded, 'List'),
+          seg(ResponsiveDocumentViewMode.grid2, Icons.grid_view_rounded, '2×2 grid'),
+          seg(ResponsiveDocumentViewMode.grid3, Icons.apps_rounded, '3×3 grid'),
+        ],
+      ),
+    );
+  }
+
+  /// Folder cards for the 2×2 / 3×3 layouts. Same cell geometry as the
+  /// document gallery (12px gaps, 4px inset per cell) so folder and document
+  /// cards line up column for column.
+  Widget _buildFolderGrid(List<_LibraryCollection> collections) {
+    final compact = _browseMode == ResponsiveDocumentViewMode.grid3;
+    final columns = compact ? 3 : 2;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = (constraints.maxWidth - (columns - 1) * 12) / columns;
+        return Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            for (final c in collections)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: SizedBox(
+                  width: width - 8,
+                  // 3×3 matches the document gallery's fixed 112px cards.
+                  height: compact ? 112 : null,
+                  child: _buildFolderGridCard(c, compact: compact),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildFolderGridCard(
+    _LibraryCollection collection, {
+    required bool compact,
+  }) {
+    final count = collection.documents.length;
+    final items = '$count ${count == 1 ? 'item' : 'items'}';
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0x96E1E5F0)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(22),
+            blurRadius: 14,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: () => _openCollection(collection.folder.id),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  crossAxisAlignment: compact
+                      ? CrossAxisAlignment.start
+                      : CrossAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: compact ? 28 : 52,
+                      height: compact ? 28 : 52,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEAF3FF),
+                        borderRadius: BorderRadius.circular(compact ? 9 : 16),
+                      ),
+                      child: FolderIllustration(size: compact ? 20 : 34),
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Align(
+                        alignment: Alignment.topRight,
+                        child: _libraryFolderMenu(
+                          collection.folder,
+                          compact: true,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: compact ? 4 : 10),
+                Text(
+                  collection.folder.name,
+                  maxLines: compact ? 2 : 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: compact ? 13 : 14.5,
+                    height: 1.25,
+                    fontWeight: compact ? FontWeight.w700 : FontWeight.w600,
+                    color: const Color(0xFF1E293B),
+                  ),
+                ),
+                SizedBox(height: compact ? 2 : 4),
+                Text(
+                  compact
+                      ? items
+                      : '$items · ${_collectionDate(collection.updatedAt)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: compact ? 10 : 12,
+                    color: const Color(0xFF94A3B8),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFolderRow(_LibraryCollection collection) {
+    final count = collection.documents.length;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: () => _openCollection(collection.folder.id),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(14, 12, 4, 12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFFE1E7F0)),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEAF3FF),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const FolderIllustration(size: 34),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        collection.folder.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFF102A56),
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      _collectionMeta(
+                        Icons.calendar_today_outlined,
+                        '$count ${count == 1 ? 'item' : 'items'} · '
+                        'Updated · '
+                        '${_collectionDate(collection.updatedAt, withTime: true)}',
+                      ),
+                    ],
+                  ),
+                ),
+                _libraryFolderMenu(collection.folder),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFoldersTab() {
+    if (_isLoading) return _buildLoadingState();
+    if (_filteredLibraryFolders.isEmpty) {
+      return const Center(
+        child: Text(
+          'No folders available',
+          style: TextStyle(color: Color(0xFF667085)),
+        ),
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 120),
+      itemCount: _filteredLibraryFolders.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 12),
+      itemBuilder: (context, index) {
+        final folder = _filteredLibraryFolders[index];
+        return Material(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          elevation: 0,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(18),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) =>
+                    FolderScreen(folderId: folder.id, folderName: folder.name),
+              ),
+            ),
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: const Color(0xFFE1E7F0)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 60,
+                    height: 60,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEAF3FF),
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: const FolderIllustration(size: 46),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          folder.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Color(0xFF102A56),
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          '${folder.documentCount} items • Created ${_formatDateDDMMYYYY(folder.createdAt)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  _libraryFolderMenu(folder),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildLibraryFoldersSection() {
+    if (_filteredLibraryFolders.isEmpty) return const SizedBox.shrink();
+    return SizedBox(
+      height: 116,
+      child: ListView.separated(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        scrollDirection: Axis.horizontal,
+        itemCount: _filteredLibraryFolders.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 10),
+        itemBuilder: (context, index) {
+          final folder = _filteredLibraryFolders[index];
+          return InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) =>
+                    FolderScreen(folderId: folder.id, folderName: folder.name),
+              ),
+            ),
+            child: Container(
+              width: 190,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.blue.shade100),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEAF3FF),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const FolderIllustration(size: 34),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      folder.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF102A56),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  _libraryFolderMenu(folder),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _libraryFolderMenu(Folder folder, {bool compact = false}) {
+    final menu = PopupMenuButton<String>(
+      tooltip: 'Folder actions',
+      position: PopupMenuPosition.under,
+      offset: const Offset(0, 6),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 8,
+      padding: EdgeInsets.zero,
+      iconSize: compact ? 18 : null,
+      icon: const Icon(Icons.more_vert_rounded, color: Colors.indigo),
+      itemBuilder: (_) => const [
+        PopupMenuItem<String>(
+          value: 'open',
+          child: Row(
+            children: [
+              Icon(Icons.folder_open_outlined, color: Colors.indigo),
+              SizedBox(width: 10),
+              Text('Open Folder'),
+            ],
+          ),
+        ),
+      ],
+      onSelected: (value) {
+        if (value != 'open') return;
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) =>
+                FolderScreen(folderId: folder.id, folderName: folder.name),
+          ),
+        );
+      },
+    );
+    // Grid cards: a small 28px hit box so the menu fits narrow 3×3 cells.
+    return compact ? SizedBox.square(dimension: 28, child: menu) : menu;
   }
 
   // ============ DOCUMENT CARD BUILDERS ============
@@ -497,7 +1432,7 @@ class _DocumentLibraryState extends State<DocumentLibrary>
       onTap: () => _handleDocumentDoubleTap(document),
       borderRadius: BorderRadius.circular(12),
       child: Card(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         elevation: 0.5,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         child: Padding(
@@ -515,9 +1450,13 @@ class _DocumentLibraryState extends State<DocumentLibrary>
                       color: color.withAlpha(10),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Icon(iconData, color: color, size: 32),
+                    child: FileTypeIcon.orElse(
+                      effectiveType,
+                      32,
+                      Icon(iconData, color: color, size: 32),
+                    ),
                   ),
-               width10,
+                  width10,
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -537,14 +1476,14 @@ class _DocumentLibraryState extends State<DocumentLibrary>
                                     maxLines: isExpanded ? 2 : 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
-                                    const SizedBox(height: 4),
-                        Text(
-                          'Type: ${_getDisplayFileType(document)} • $formattedDate',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Type: ${_getDisplayFileType(document)} • $formattedDate',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
@@ -590,8 +1529,7 @@ class _DocumentLibraryState extends State<DocumentLibrary>
                             const SizedBox(width: 8),
                             // Vertical More Options Button
                             IconButton(
-                              onPressed: () =>
-                                  _showDocumentActions(document),
+                              onPressed: () => _showDocumentActions(document),
                               icon: Container(
                                 width: 36,
                                 height: 36,
@@ -610,7 +1548,6 @@ class _DocumentLibraryState extends State<DocumentLibrary>
                             ),
                           ],
                         ),
-                      
                       ],
                     ),
                   ),
@@ -827,7 +1764,7 @@ class _DocumentLibraryState extends State<DocumentLibrary>
 
     return Card(
       elevation: 0.5,
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: const EdgeInsets.only(bottom: 4),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: InkWell(
         onTap: () => _handleDocumentDoubleTap(document),
@@ -847,7 +1784,11 @@ class _DocumentLibraryState extends State<DocumentLibrary>
                       color: color.withAlpha(20),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: Icon(iconData, color: color, size: 24),
+                    child: FileTypeIcon.orElse(
+                      effectiveType,
+                      24,
+                      Icon(iconData, color: color, size: 24),
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -960,8 +1901,7 @@ class _DocumentLibraryState extends State<DocumentLibrary>
                     ),
                   ),
                   IconButton(
-                    onPressed: () =>
-                        _showDocumentActions(document),
+                    onPressed: () => _showDocumentActions(document),
                     icon: Container(
                       width: 32,
                       height: 32,
@@ -1031,76 +1971,73 @@ class _DocumentLibraryState extends State<DocumentLibrary>
     _documentOpener.openPreviewDialog(context: context, document: document);
   }
 
-  void _showDocumentActions(Document document) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+  Future<void> _showDocumentActions(
+    Document document, [
+    BuildContext? anchorContext,
+    bool isGrid = false,
+  ]) async {
+    final action = await showMenu<String>(
+      context: anchorContext ?? context,
+      position: _menuPositionBelow(
+        anchorContext ?? context,
+        extraOffset: anchorContext == null ? 4 : (isGrid ? 116 : 62),
       ),
-      builder: (context) => SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 8),
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 12),
-              ListTile(
-                leading: const Icon(Icons.visibility, color: Colors.purple),
-                title: const Text('View'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _documentOpener.openPreviewDialog(
-                    context: context,
-                    document: document,
-                  );
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.info_outline, color: Colors.blue),
-                title: const Text('Properties'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showDocumentDetails(document);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.share, color: Colors.blue),
-                title: const Text('Share'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showShareDialog(document);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.history, color: Colors.blueGrey),
-                title: const Text('Version History'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showDocumentVersions(document);
-                },
-              ),
-              const SizedBox(height: 8),
-            ],
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      items: [
+        const PopupMenuItem(
+          value: 'properties',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.info_outline, color: Colors.blue),
+            title: Text('Properties'),
           ),
         ),
-      ),
+        const PopupMenuItem(
+          value: 'share',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.share, color: Colors.blue),
+            title: Text('Share'),
+          ),
+        ),
+        favoriteMenuItem(document.id),
+      ],
+    );
+
+    if (!mounted) return;
+    if (action == 'properties') {
+      await _showDocumentDetails(document);
+    } else if (action == 'share') {
+      _showShareDialog(document);
+    } else if (action == favoriteMenuValue) {
+      await toggleFavoriteWithFeedback(context, document.id);
+    }
+  }
+
+  RelativeRect _menuPositionBelow(
+    BuildContext anchorContext, {
+    double extraOffset = 4,
+  }) {
+    final button = anchorContext.findRenderObject() as RenderBox;
+    final overlay =
+        Overlay.of(anchorContext).context.findRenderObject() as RenderBox;
+    final rect =
+        button.localToGlobal(Offset.zero, ancestor: overlay) & button.size;
+    final bottomGap = overlay.size.height - rect.bottom - 4;
+    return RelativeRect.fromLTRB(
+      rect.left,
+      rect.bottom + extraOffset,
+      overlay.size.width - rect.right,
+      bottomGap < 0 ? 0 : bottomGap,
     );
   }
 
   // Search by keyword
- 
+
   Future<void> _showDocumentVersions(Document document) async {
     await VersionHistoryDialog.show(context, document: document);
   }
+
   /// Show document details.
   Future<void> _showDocumentDetails(Document document) async {
     try {
@@ -1186,57 +2123,59 @@ class _DocumentLibraryState extends State<DocumentLibrary>
                 child: const Text('Close'),
               ),
               if (!document.isPublishedToLibrary)
-              TextButton(
-                onPressed: () async {
-                  Navigator.pop(context);
-                  final result = await _libraryService.publishDocument(
-                    document.id,
-                  );
-                
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        result['success'] == true
-                            ? 'Published to library'
-                            : (result['message'] ?? 'Publish failed'),
+                TextButton(
+                  onPressed: () async {
+                    Navigator.pop(context);
+                    final result = await _libraryService.publishDocument(
+                      document.id,
+                    );
+
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          result['success'] == true
+                              ? 'Published to library'
+                              : (result['message'] ?? 'Publish failed'),
+                        ),
+                        backgroundColor: result['success'] == true
+                            ? Colors.green
+                            : Colors.red,
                       ),
-                      backgroundColor:
-                          result['success'] == true ? Colors.green : Colors.red,
-                    ),
-                  );
+                    );
                     setState(() {
-                    document.isPublishedToLibrary = result['success'] == true;
-                  });
-                },
-                child: const Text('Publish'),
-              ),
+                      document.isPublishedToLibrary = result['success'] == true;
+                    });
+                  },
+                  child: const Text('Publish'),
+                ),
               if (document.isPublishedToLibrary)
-              TextButton(
-                onPressed: () async {
-                  Navigator.pop(context);
-                  final result = await _libraryService.unpublishDocument(
-                    document.id,
-                  );
-                 
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        result['success'] == true
-                            ? 'Unpublished from library'
-                            : (result['message'] ?? 'Unpublish failed'),
+                TextButton(
+                  onPressed: () async {
+                    Navigator.pop(context);
+                    final result = await _libraryService.unpublishDocument(
+                      document.id,
+                    );
+
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          result['success'] == true
+                              ? 'Unpublished from library'
+                              : (result['message'] ?? 'Unpublish failed'),
+                        ),
+                        backgroundColor: result['success'] == true
+                            ? Colors.green
+                            : Colors.red,
                       ),
-                      backgroundColor:
-                          result['success'] == true ? Colors.green : Colors.red,
-                    ),
-                  );
-                   setState(() {
-                    document.isPublishedToLibrary = result['success'] != true;
-                  });
-                },
-                child: const Text('Unpublish'),
-              ),
+                    );
+                    setState(() {
+                      document.isPublishedToLibrary = result['success'] != true;
+                    });
+                  },
+                  child: const Text('Unpublish'),
+                ),
               ElevatedButton(
                 onPressed: () {
                   Navigator.pop(context);
@@ -1326,7 +2265,7 @@ class _DocumentLibraryState extends State<DocumentLibrary>
             width: 100,
             child: Text(
               label,
-              style: w400_13Poppins(color: Colors.grey.shade700)
+              style: w400_13Poppins(color: Colors.grey.shade700),
             ),
           ),
           const SizedBox(width: 8),
@@ -1470,51 +2409,56 @@ class _DocumentLibraryState extends State<DocumentLibrary>
   }
 
   Widget _buildEmptyState() {
+    final hasCategory = _selectedCategory != 'All Documents';
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
-            _searchController.text.isEmpty
-                ? Icons.folder_open
-                : Icons.search_off,
-            size: 80,
-            color: Colors.grey.shade400,
+            hasCategory ? Icons.folder_off_outlined : Icons.search_off_rounded,
+            size: 64,
+            color: const Color(0xFF94A3B8),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
           Text(
-            _searchController.text.isEmpty
-                ? 'Document Library Empty'
-                : 'No Documents Found',
+            hasCategory
+                ? 'No files found in $_selectedCategory'
+                : 'No documents found',
+            textAlign: TextAlign.center,
             style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: Colors.grey,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF1E293B),
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 40),
+            padding: const EdgeInsets.symmetric(horizontal: 32),
             child: Text(
-              _hasError
-                  ? _errorMessage
-                  : _searchController.text.isEmpty
-                  ? 'No public documents available in the library yet'
-                  : 'No documents found for "${_searchController.text}"',
-              style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+              hasCategory
+                  ? 'There are currently no documents filed under this department.'
+                  : (_hasError
+                        ? _errorMessage
+                        : 'Try another search or file type.'),
+              style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
               textAlign: TextAlign.center,
             ),
           ),
-          const SizedBox(height: 20),
-          if (_searchController.text.isNotEmpty)
-            ElevatedButton.icon(
+          const SizedBox(height: 18),
+          if (hasCategory)
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _selectedCategory = 'All Documents';
+                  _applyFilters();
+                });
+              },
+              child: const Text('View All Documents'),
+            )
+          else if (_searchQuery.isNotEmpty)
+            TextButton(
               onPressed: _clearSearch,
-              icon: const Icon(Icons.clear_all),
-              label: const Text('Clear Search'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.indigo,
-                foregroundColor: Colors.white,
-              ),
+              child: const Text('Clear Search'),
             ),
           if (_hasError)
             ElevatedButton.icon(
@@ -1531,241 +2475,276 @@ class _DocumentLibraryState extends State<DocumentLibrary>
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-    
-      appBar: AppBar(
-        title:  Text(
-          'Document Library',
-          style: w700_18Poppins(color: Colors.indigo)
+  PopupMenuItem<String> _filterMenuItem(String value, String label) {
+    final selected = _selectedFilter == value;
+    return PopupMenuItem<String>(
+      value: value,
+      height: 42,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected
+              ? const Color(0xFF0866E9).withValues(alpha: 0.10)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(999),
+          border: selected
+              ? Border.all(
+                  color: const Color(0xFF0866E9).withValues(alpha: 0.22),
+                  width: 1,
+                )
+              : null,
         ),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back_ios_new_rounded,
-            size: 20,
-            color: Colors.indigo,
-          ),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      body: DismissKeyboard(
-        child: ResponsivePage(
-          padding: EdgeInsets.zero,
-          child: Column(
-          children: [
-            // Search and filter section
-            Container(
-              padding: const EdgeInsets.all(16),
-       
-              child: Column(
-                children: [
-                // Search and Filter Row
-                Row(
-                  children: [
-                    // Search Bar
-                    Expanded(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.grey.withAlpha(10),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: TextField(
-                          controller: _searchController,
-                          onChanged: _filterDocuments,
-                          maxLines: 1,
-                          decoration: InputDecoration(
-                            hintText: 'Search library documents...',
-                            hintStyle: TextStyle(color: Colors.grey.shade600),
-                            prefixIcon: const Icon(
-                              Icons.search,
-                              color: Colors.indigo,
-                            ),
-                            suffixIcon: _searchController.text.isNotEmpty
-                                ? IconButton(
-                                    icon: const Icon(Icons.clear),
-                                    color: Colors.grey,
-                                    onPressed: _clearSearch,
-                                  )
-                                : null,
-                            filled: true,
-                            fillColor: Colors.white,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide.none,
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                              vertical: 14,
-                              horizontal: 16,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    // Layout Selector
-                    // Filter Dropdown
-                    Container(
-                      constraints: const BoxConstraints(maxWidth: 120),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.grey.withAlpha(10),
-                            blurRadius: 1,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.grey.shade300),
-                        ),
-                        child: DropdownButton<String>(
-                          value: _selectedFilter,
-                          underline: const SizedBox(),
-                          icon: const Icon(
-                            Icons.filter_list,
-                            color: Colors.indigo,
-                          ),
-                          isExpanded: true,
-                          items: const [
-                            DropdownMenuItem(
-                              value: 'All',
-                              child: Text('Filter'),
-                            ),
-                            DropdownMenuItem(value: 'PDF', child: Text('PDF')),
-                            DropdownMenuItem(
-                              value: 'DOCX',
-                              child: Text('Word'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'XLSX',
-                              child: Text('Excel'),
-                            ),
-                            DropdownMenuItem(value: 'PPTX', child: Text('PPT')),
-                            DropdownMenuItem(
-                              value: 'IMAGE',
-                              child: Text('Images'),
-                            ),
-                            DropdownMenuItem(value: 'TXT', child: Text('Text')),
-                          ],
-                          onChanged: (value) {
-                            setState(() {
-                              _selectedFilter = value!;
-                            });
-                          },
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                // Stats row with filter badges
-                Row(
-                  children: [
-                    Text(
-                      '${_finalFilteredDocuments.length} document${_finalFilteredDocuments.length == 1 ? '' : 's'}',
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                        fontSize: 13,
-                      ),
-                    ),
-                    const Spacer(),
-                    if (_searchQuery.isNotEmpty || _selectedFilter != 'All')
-                      TextButton(
-                        onPressed: _clearSearch,
-                        child: Text(
-                          'Clear',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.indigo,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-
-          // Filter Info Banner (when active)
-          if (_searchQuery.isNotEmpty || _selectedFilter != 'All')
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              color: Colors.blue.shade50,
-              child: Row(
-                children: [
-                  Icon(Icons.info, size: 16, color: Colors.blue.shade700),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      _buildFilterText(),
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.blue.shade700,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-          // Loading/Downloading Banner
-          if (_isDownloading) _buildDownloadingBanner(),
-
-          // Main Content Area
-          Expanded(
-            child: _isLoading
-                ? _buildLoadingState()
-                : _finalFilteredDocuments.isEmpty
-                ? _buildEmptyState()
-                : RefreshIndicator(
-                    onRefresh: _loadPublicDocuments,
-                    color: Colors.indigo,
-                    child: _buildDocumentsContent(_finalFilteredDocuments),
-                  ),
-          ),
-        ],
+        child: Text(
+          label,
+          style: TextStyle(
+            color: const Color(0xFF102A56),
+            fontSize: 14,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
           ),
         ),
       ),
     );
   }
 
-  String _buildFilterText() {
-    String text =
-        'Showing ${_finalFilteredDocuments.length} of ${_publicDocuments.length} documents';
-
-    if (_searchQuery.isNotEmpty && _selectedFilter != 'All') {
-      text += ' for "$_searchQuery" in $_selectedFilter';
-    } else if (_searchQuery.isNotEmpty) {
-      text += ' for "$_searchQuery"';
-    } else if (_selectedFilter != 'All') {
-      text += ' in $_selectedFilter';
+  String _filterButtonLabel() {
+    switch (_selectedFilter) {
+      case 'FOLDERS':
+        return 'Folders';
+      case 'DOCX':
+        return 'Word';
+      case 'XLSX':
+        return 'Excel';
+      case 'IMAGE':
+        return 'Images';
+      case 'TXT':
+        return 'Text';
+      case 'All':
+        return 'File Type';
+      default:
+        return _selectedFilter;
     }
+  }
 
-    return text;
+  Widget _libraryCategoryChip(String label, {bool selected = false}) {
+    return SizedBox(
+      height: 42,
+      child: Padding(
+        padding: const EdgeInsets.only(right: 8),
+        child: Center(
+          child: InkWell(
+            borderRadius: BorderRadius.circular(999),
+            onTap: () {
+              setState(() {
+                _selectedCategory = label;
+                _applyFilters();
+              });
+            },
+            child: Container(
+              alignment: Alignment.center,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              decoration: BoxDecoration(
+                color: selected ? const Color(0xFF0095E8) : Colors.white,
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                  color: selected
+                      ? const Color(0xFF0095E8)
+                      : const Color(0xFFE2E8F0),
+                ),
+              ),
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: selected ? Colors.white : const Color(0xFF526783),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF4F9FF),
+      appBar: AppBar(
+        toolbarHeight: 0,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+      ),
+      body: DismissKeyboard(
+        child: ResponsivePage(
+          padding: EdgeInsets.zero,
+          child: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: PillSearchField(
+                            controller: _searchController,
+                            hint: 'Search catalog / policies...',
+                            onChanged: _filterDocuments,
+                            onClear: _clearSearch,
+                            onSubmitted: _filterDocuments,
+                            loading: _aiSearching,
+                            trailing: AiSparkleButton(
+                              onTap: () {
+                                final query = _searchController.text.trim();
+                                if (query.isEmpty) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Enter a search query first.',
+                                      ),
+                                    ),
+                                  );
+                                  return;
+                                }
+                                FocusScope.of(context).unfocus();
+                                _runAiSearch(query);
+                              },
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        SizedBox(
+                          width: 108,
+                          height: 54,
+                          child: PopupMenuButton<String>(
+                            tooltip: 'Filter documents',
+                            padding: EdgeInsets.zero,
+                            offset: const Offset(0, 58),
+                            elevation: 6,
+                            color: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                              side: BorderSide(color: Colors.grey.shade200),
+                            ),
+                            constraints: const BoxConstraints(
+                              minWidth: 108,
+                              maxWidth: 116,
+                            ),
+                            onSelected: (value) {
+                              setState(() {
+                                _selectedFilter = value;
+                                _applyFilters();
+                              });
+                            },
+                            itemBuilder: (context) => [
+                              _filterMenuItem('All', 'Filter'),
+                              _filterMenuItem('FOLDERS', 'Folders'),
+                              _filterMenuItem('PDF', 'PDF'),
+                              _filterMenuItem('DOCX', 'Word'),
+                              _filterMenuItem('XLSX', 'Excel'),
+                              _filterMenuItem('PPTX', 'PPT'),
+                              _filterMenuItem('IMAGE', 'Images'),
+                              _filterMenuItem('TXT', 'Text'),
+                            ],
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _selectedFilter == 'All'
+                                    ? Colors.white
+                                    : const Color(0xFF2196F3),
+                                borderRadius: BorderRadius.circular(999),
+                                border: Border.all(color: Colors.grey.shade300),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.05),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 3),
+                                  ),
+                                ],
+                              ),
+                              child: Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      _filterButtonLabel(),
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: _selectedFilter == 'All'
+                                            ? Colors.indigo
+                                            : Colors.white,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ),
+                                  Icon(
+                                    Icons.keyboard_arrow_down_rounded,
+                                    color: _selectedFilter == 'All'
+                                        ? Colors.indigo
+                                        : Colors.white,
+                                    size: 24,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(
+                height: 42,
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+                  scrollDirection: Axis.horizontal,
+                  children: [
+                    for (final category in const [
+                      'All Documents',
+                      'HR Policies',
+                      'IOTIQ Certificates',
+                      'Infra Projects',
+                      'Finance Documents',
+                      'Software Projects',
+                    ])
+                      _libraryCategoryChip(
+                        category,
+                        selected: _selectedCategory == category,
+                      ),
+                  ],
+                ),
+              ),
+              if (_isDownloading) _buildDownloadingBanner(),
+              Expanded(child: _buildDocumentsTab()),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
+/// A published folder in the library and the library documents inside it.
+class _LibraryCollection {
+  _LibraryCollection({required this.folder, required this.documents})
+    : updatedAt = documents
+          .map(
+            (d) =>
+                DateTime.tryParse(d.updatedAt ?? d.uploadDate) ?? DateTime(1970),
+          )
+          .reduce((a, b) => a.isAfter(b) ? a : b);
 
-
-
-
-
-
-
+  final Folder folder;
+  final List<Document> documents;
+  final DateTime updatedAt;
+}

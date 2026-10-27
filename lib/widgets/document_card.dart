@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:digi_sanchika/models/document.dart';
 import 'package:digi_sanchika/utils/app_theme.dart';
+import 'package:digi_sanchika/widgets/file_type_icon.dart';
 import 'package:digi_sanchika/widgets/status_chip.dart';
 
 class DocumentCard extends StatelessWidget {
@@ -116,7 +117,8 @@ class DocumentCard extends StatelessWidget {
                         color: color.withAlpha(20),
                         borderRadius: BorderRadius.circular(AppRadius.sm),
                       ),
-                      child: Icon(_typeIcon, color: color, size: 24),
+                      child: FileTypeIcon.orElse(document.type, 28,
+                          Icon(_typeIcon, color: color, size: 24)),
                     ),
                     const SizedBox(width: 12),
 

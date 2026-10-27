@@ -11,8 +11,10 @@ class UserProfile {
   final String? lastLoginIp;
   final int? failedLoginAttempts;
 
-  /// Not returned by the server yet; set from locally saved profile edits.
+  /// Optional user-chosen title; falls back to the access role when unset.
   final String? designation;
+
+  /// Optional "member since" year; falls back to the year of [createdAt].
   final String? sinceYear;
 
   UserProfile({
@@ -30,7 +32,22 @@ class UserProfile {
     this.sinceYear,
   });
 
-  /// Returns a copy with the given fields replaced; null keeps the current value.
+  /// Falls back to the access role when no designation is set.
+  String get roleLabel {
+    if (designation != null && designation!.trim().isNotEmpty) {
+      return designation!.trim();
+    }
+    return isAdmin ? 'Administrator' : (isActive ? 'Active User' : 'Inactive');
+  }
+
+  String get sinceLabel {
+    if (sinceYear != null && sinceYear!.trim().isNotEmpty) {
+      return sinceYear!.trim();
+    }
+    final parsed = DateTime.tryParse(createdAt ?? '');
+    return parsed != null ? parsed.year.toString() : '—';
+  }
+
   UserProfile copyWith({
     String? employeeName,
     String? employeeId,
@@ -110,6 +127,8 @@ class UserProfile {
       'lastLoginAt': lastLoginAt,
       'lastLoginIp': lastLoginIp,
       'failedLoginAttempts': failedLoginAttempts,
+      'designation': designation,
+      'sinceYear': sinceYear,
     };
   }
 }

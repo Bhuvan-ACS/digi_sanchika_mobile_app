@@ -8,6 +8,7 @@ class SharedFolder {
   final bool canUpload;
   final bool canDownload;
   final bool canEdit;
+  final bool canShare;
   final String? viaGroupName;
   final String? viaGroupColorHex;
 
@@ -21,6 +22,7 @@ class SharedFolder {
     this.canUpload = false,
     this.canDownload = false,
     this.canEdit = false,
+    this.canShare = false,
     this.viaGroupName,
     this.viaGroupColorHex,
   });
@@ -92,6 +94,13 @@ class SharedFolder {
           effective['can_edit'] == true ||
           share['allow_edit'] == true ||
           share['allowEdit'] == true,
+      canShare:
+          effective['canShare'] == true ||
+          effective['can_share'] == true ||
+          share['canShare'] == true ||
+          share['can_share'] == true ||
+          share['allowShare'] == true ||
+          share['allow_share'] == true,
       viaGroupName: viaGroup['name']?.toString(),
       viaGroupColorHex:
           (viaGroup['color'] ?? viaGroup['colorHex'])?.toString(),
@@ -109,6 +118,7 @@ class SharedFolder {
       'canUpload': canUpload,
       'canDownload': canDownload,
       'canEdit': canEdit,
+      'canShare': canShare,
       'viaGroupName': viaGroupName,
       'viaGroupColorHex': viaGroupColorHex,
     };

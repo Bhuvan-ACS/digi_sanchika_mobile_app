@@ -4,6 +4,7 @@ import 'package:digi_sanchika/services/group_shares_service.dart';
 import 'package:digi_sanchika/models/group.dart';
 import 'package:flutter/material.dart';
 import 'package:digi_sanchika/widgets/dismiss_keyboard.dart';
+import 'package:digi_sanchika/widgets/public_link_panel.dart';
 
 class ShareAccessSheet {
   static Future<void> showForDocument({
@@ -103,7 +104,7 @@ class _ShareAccessSheetWidgetState extends State<_ShareAccessSheetWidget>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _load();
   }
 
@@ -1288,6 +1289,7 @@ class _ShareAccessSheetWidgetState extends State<_ShareAccessSheetWidget>
               Tab(text: 'Share'),
               Tab(text: 'Groups'),
               Tab(text: 'Manage'),
+              Tab(text: 'Link'),
             ],
           ),
           Expanded(
@@ -1329,6 +1331,10 @@ class _ShareAccessSheetWidgetState extends State<_ShareAccessSheetWidget>
                       _buildShareTab(),
                       _buildGroupShareTab(),
                       _buildManageTab(),
+                      PublicLinkPanel(
+                        isFolder: widget.type == ShareEntityType.folder,
+                        entityId: widget.entityId,
+                      ),
                     ],
                   ),
           ),

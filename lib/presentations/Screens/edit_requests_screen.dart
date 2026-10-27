@@ -1,4 +1,5 @@
 import 'package:digi_sanchika/utils/app_fonts.dart';
+import 'package:digi_sanchika/widgets/file_type_icon.dart';
 import 'package:flutter/material.dart';
 import 'package:digi_sanchika/widgets/responsive_page.dart';
 import 'package:digi_sanchika/services/edit_requests_service.dart';
@@ -302,7 +303,8 @@ class _EditRequestsScreenState extends State<EditRequestsScreen>
       'txt' => Icons.text_snippet_rounded,
       _ => Icons.insert_drive_file_rounded,
     };
-    return Icon(icon, size: size, color: color ?? const Color(0xFFE65100));
+    return FileTypeIcon.orElse(ext, size + 6,
+        Icon(icon, size: size, color: color ?? const Color(0xFFE65100)));
   }
 
   /// Card design for the "Pending" tab — avatar initial, name, time, a

@@ -1,4 +1,5 @@
 import 'package:digi_sanchika/utils/app_fonts.dart';
+import 'package:digi_sanchika/widgets/file_type_icon.dart';
 import 'package:flutter/material.dart';
 import 'package:digi_sanchika/services/recycle_bin_service.dart';
 import 'package:digi_sanchika/models/recycle_bin_item.dart';
@@ -558,13 +559,17 @@ class _RecycleBinScreenState extends State<RecycleBinScreen> {
                   color: color.withAlpha(24),
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: Text(
-                  badge,
-                  style: TextStyle(
-                    color: color,
-                    fontWeight: FontWeight.w800,
-                    fontSize: dense ? 10 : 11,
-                    letterSpacing: 0.2,
+                child: FileTypeIcon.orElse(
+                  _inferFileType(item),
+                  dense ? 28 : 32,
+                  Text(
+                    badge,
+                    style: TextStyle(
+                      color: color,
+                      fontWeight: FontWeight.w800,
+                      fontSize: dense ? 10 : 11,
+                      letterSpacing: 0.2,
+                    ),
                   ),
                 ),
               ),
@@ -689,12 +694,16 @@ class _RecycleBinScreenState extends State<RecycleBinScreen> {
                   color: color.withAlpha(24),
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: Text(
-                  badge,
-                  style: TextStyle(
-                    color: color,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 11,
+                child: FileTypeIcon.orElse(
+                  _inferFileType(item),
+                  30,
+                  Text(
+                    badge,
+                    style: TextStyle(
+                      color: color,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 11,
+                    ),
                   ),
                 ),
               ),

@@ -1,6 +1,7 @@
 // lib/presentations/screens/folder_manager_screen.dart
 
 import 'package:flutter/material.dart';
+import 'package:digi_sanchika/widgets/folder_illustration.dart';
 import 'package:digi_sanchika/widgets/dismiss_keyboard.dart';
 import 'package:digi_sanchika/models/folder_tree_node.dart';
 import 'package:digi_sanchika/services/folder_tree_service.dart';
@@ -215,11 +216,7 @@ class _FolderManagerScreenState extends State<FolderManagerScreen> {
               ),
               child: Row(
                 children: [
-                  Icon(
-                    Icons.folder_rounded,
-                    size: 18,
-                    color: Colors.amber.shade700,
-                  ),
+                    FolderIllustration(size: 24),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -575,7 +572,7 @@ class _FolderManagerScreenState extends State<FolderManagerScreen> {
       child: DismissKeyboard(child: Scaffold(
         backgroundColor: AppColors.background,
         appBar: AppBar(
-          backgroundColor: AppColors.primary,
+          backgroundColor: AppColors.header,
           foregroundColor: Colors.white,
           elevation: 0,
           titleSpacing: 0,
@@ -618,18 +615,6 @@ class _FolderManagerScreenState extends State<FolderManagerScreen> {
                 ),
                 tooltip: _isGridView ? 'List view' : 'Grid view',
                 onPressed: () => setState(() => _isGridView = !_isGridView),
-              ),
-            ),
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 4),
-              decoration: BoxDecoration(
-                color: Colors.white.withAlpha(28),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: IconButton(
-                icon: const Icon(Icons.refresh_rounded),
-                tooltip: 'Refresh',
-                onPressed: () => _loadFolderTree(),
               ),
             ),
             PopupMenuButton<String>(

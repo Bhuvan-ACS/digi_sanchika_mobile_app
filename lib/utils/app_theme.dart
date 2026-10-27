@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:digi_sanchika/utils/app_fonts.dart';
+import 'package:digi_sanchika/theme/ui_theme.dart';
 
 /// Single source of truth for every design token in Digi Sanchika.
 /// Import this file; never hardcode hex colours in widget trees.
@@ -11,6 +13,10 @@ class AppColors {
   static const Color primaryLight = Color(0xFF4E63D4);
   static const Color primaryContainer = Color(0xFFEDF0FF);
   static const Color onPrimary = Colors.white;
+
+  /// Fill for every blue header / app bar: the same blue as the bottom-nav
+  /// upload button, so filled headers match across the app.
+  static const Color header = UiColors.primary;
 
   // ── Gradient (same as login page) ───────────────────────────────────────────
   static const LinearGradient brandGradient = LinearGradient(
@@ -108,6 +114,9 @@ ThemeData buildAppTheme() {
 
   return ThemeData(
     useMaterial3: true,
+    // Use the same typeface as the app's shared typography helpers. This
+    // also covers Text widgets that do not provide an explicit TextStyle.
+    fontFamily: appFontFamily,
     scaffoldBackgroundColor: bg,
     colorScheme: ColorScheme.light(
       primary: primary,
@@ -126,7 +135,7 @@ ThemeData buildAppTheme() {
 
     // ── AppBar ─────────────────────────────────────────────────────────────────
     appBarTheme: const AppBarTheme(
-      backgroundColor: primary,
+      backgroundColor: AppColors.header,
       foregroundColor: Colors.white,
       elevation: 0,
       scrolledUnderElevation: 2,

@@ -1,6 +1,7 @@
 // lib/presentations/screens/folder_picker_screen.dart
 
 import 'package:flutter/material.dart';
+import 'package:digi_sanchika/utils/app_theme.dart';
 import 'package:digi_sanchika/models/folder_tree_node.dart';
 import 'package:digi_sanchika/services/folder_tree_service.dart';
 import 'package:digi_sanchika/widgets/folder_tree_widget.dart';
@@ -123,7 +124,7 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
           widget.title,
           style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         ),
-        backgroundColor: const Color.fromARGB(255, 43, 65, 189),
+        backgroundColor: AppColors.header,
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.close, color: Colors.white),

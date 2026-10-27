@@ -104,7 +104,9 @@ class MyDocumentsService {
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        final data = response.data;
+        // Server responds `{ folder: {...} }`; older builds sent it bare.
+        final raw = response.data;
+        final data = raw is Map && raw['folder'] is Map ? raw['folder'] : raw;
         final folder = Folder(
           id: data['id'].toString(),
           name: data['name'] ?? folderName,
@@ -300,95 +302,208 @@ class MyDocumentsService {
     }
   }
 
+  /// Backend scopes are `my | shared | library | all`; older callers pass
+  /// `mine`, so normalise before sending.
+  static String _searchScope(String scope) {
+    switch (scope) {
+      case 'shared':
+      case 'library':
+      case 'all':
+        return scope;
+      default:
+        return 'my';
+    }
+  }
+
+  static String? _errorMessage(dynamic data) {
+    if (data is Map && data['error'] != null) return data['error'].toString();
+    return null;
+  }
+
+  /// Reads `{ results: [ { documentId, score | rank, chunkPreview? } ] }`.
+  static List<Map<String, dynamic>> _parseSearchResults(dynamic data) {
+    final results = data is Map ? data['results'] : null;
+    if (results is! List) return [];
+    final out = <Map<String, dynamic>>[];
+    for (final r in results) {
+      if (r is! Map) continue;
+      final m = Map<String, dynamic>.from(r);
+      final id = (m['documentId'] ?? m['document_id'] ?? '').toString();
+      if (id.isEmpty) continue;
+      out.add({
+        'documentId': id,
+        'score': m['score'] ?? m['rank'],
+        'chunkPreview': m['chunkPreview'] ?? m['chunk_preview'],
+      });
+    }
+    return out;
+  }
+
+  /// Search endpoints return ids only; fetch each document for display.
+  static Future<List<Document>> _resolveDocuments(List<String> ids) async {
+    final details = await Future.wait(ids.map(getDocumentDetails));
+    final raw = details
+        .where((d) => d['success'] == true && d['details'] is Map)
+        .map((d) => d['details'])
+        .toList();
+    return _mapBackendDocuments(raw);
+  }
+
+  /// POST /search/keyword. Returns `results` (ids + rank) and the resolved
+  /// `documents` in rank order.
   static Future<Map<String, dynamic>> keywordSearch({
     required String query,
-    String scope = 'mine',
-    int limit = 50,
+    String scope = 'my',
+    int limit = 25,
+    bool resolveDocuments = true,
   }) async {
+    final q = query.trim();
+    if (q.isEmpty) {
+      return {'success': true, 'results': [], 'documents': <Document>[]};
+    }
     try {
       final dio = ApiClient.instance.dio;
       final response = await dio.post(
         '/search/keyword',
-        data: {'query': query, 'scope': scope, 'limit': limit},
+        data: {'query': q, 'scope': _searchScope(scope), 'limit': limit},
       );
       if (response.statusCode == 200) {
-        final data = response.data;
-        final raw = data['documents'] ?? data['results'] ?? data['data'] ?? [];
-        final documents = _mapBackendDocuments(raw is List ? raw : []);
-        return {'success': true, 'documents': documents};
+        final results = _parseSearchResults(response.data);
+        final documents = resolveDocuments
+            ? await _resolveDocuments(
+                results.map((r) => r['documentId'] as String).toList(),
+              )
+            : <Document>[];
+        return {'success': true, 'results': results, 'documents': documents};
       }
       return {
         'success': false,
-        'error': 'Search failed (${response.statusCode})',
+        'error':
+            _errorMessage(response.data) ??
+            'Search failed (${response.statusCode})',
       };
     } catch (e) {
       return {'success': false, 'error': 'Exception: $e'};
     }
   }
 
+  /// AI search. Tries semantic v2 (`/search/semantic`); when v2 is switched
+  /// off on the server it uses legacy v1 (`/ai/semantic-search`), and when
+  /// semantic search is disabled altogether it falls back to keyword search.
+  ///
+  /// Returns `{ success, results: [{documentId, score, chunkPreview}],
+  /// mode: 'semantic' | 'legacy' | 'keyword', pendingEmbeddings? }`.
   static Future<Map<String, dynamic>> semanticSearch({
     required String query,
-    String scope = 'mine',
-    int limit = 50,
+    String scope = 'my',
+    int limit = 10,
+    Map<String, dynamic>? filters,
   }) async {
+    final q = query.trim();
+    if (q.isEmpty) return {'success': true, 'results': [], 'mode': 'semantic'};
+    final apiScope = _searchScope(scope);
     try {
       final dio = ApiClient.instance.dio;
       final response = await dio.post(
         '/search/semantic',
-        data: {'query': query, 'scope': scope, 'limit': limit},
+        data: {
+          'query': q,
+          'scope': apiScope,
+          'limit': limit,
+          if (filters != null && filters.isNotEmpty) 'filters': filters,
+        },
       );
       if (response.statusCode == 200) {
-        final data = response.data;
-        if (data is Map<String, dynamic>) {
-          final rawDocs = data['documents'] ?? data['data'];
-          if (rawDocs is List) {
-            final documents = _mapBackendDocuments(rawDocs);
-            return {'success': true, 'documents': documents};
-          }
+        return {
+          'success': true,
+          'results': _parseSearchResults(response.data),
+          'mode': 'semantic',
+        };
+      }
 
-          // New contract: { results: [ { documentId, score, chunkPreview } ] }
-          final results = data['results'];
-          if (results is List) {
-            final out = <Map<String, dynamic>>[];
-            for (final r in results) {
-              if (r is Map) {
-                final m = Map<String, dynamic>.from(r);
-                final id = (m['documentId'] ?? m['document_id'] ?? '')
-                    .toString();
-                if (id.isEmpty) continue;
-                out.add({
-                  'documentId': id,
-                  'score': m['score'],
-                  'chunkPreview': m['chunkPreview'] ?? m['chunk_preview'],
-                });
-              }
-            }
-            return {'success': true, 'results': out};
-          }
-        }
-        return {'success': true, 'documents': <Document>[]};
+      final error = _errorMessage(response.data) ?? '';
+      if (response.statusCode == 400 && error.contains('v2 is disabled')) {
+        return _legacySemanticSearch(query: q, scope: apiScope, limit: limit);
+      }
+      if (response.statusCode == 400 &&
+          error.contains('Semantic search is disabled')) {
+        return _keywordFallback(query: q, scope: apiScope, limit: limit);
       }
       return {
         'success': false,
-        'error': 'Semantic search failed (${response.statusCode})',
+        'error': error.isNotEmpty
+            ? error
+            : 'Semantic search failed (${response.statusCode})',
       };
     } catch (e) {
       return {'success': false, 'error': 'Exception: $e'};
     }
   }
 
-  static Future<bool> isSemanticSearchAvailable() async {
+  static Future<Map<String, dynamic>> _legacySemanticSearch({
+    required String query,
+    required String scope,
+    required int limit,
+  }) async {
+    final dio = ApiClient.instance.dio;
+    final response = await dio.post(
+      '/ai/semantic-search',
+      data: {'query': query, 'scope': scope, 'limit': limit},
+    );
+    if (response.statusCode == 200) {
+      final data = response.data;
+      return {
+        'success': true,
+        'results': _parseSearchResults(data),
+        'mode': 'legacy',
+        'pendingEmbeddings': data is Map ? data['pendingEmbeddings'] ?? 0 : 0,
+      };
+    }
+    final error = _errorMessage(response.data) ?? '';
+    if (response.statusCode == 400 &&
+        error.contains('Semantic search is disabled')) {
+      return _keywordFallback(query: query, scope: scope, limit: limit);
+    }
+    return {
+      'success': false,
+      'error': error.isNotEmpty
+          ? error
+          : 'Semantic search failed (${response.statusCode})',
+    };
+  }
+
+  static Future<Map<String, dynamic>> _keywordFallback({
+    required String query,
+    required String scope,
+    required int limit,
+  }) async {
+    final keyword = await keywordSearch(
+      query: query,
+      scope: scope,
+      limit: limit,
+      resolveDocuments: false,
+    );
+    return {...keyword, 'mode': 'keyword'};
+  }
+
+  /// GET /ai/status: which AI features are on, providers and backfill.
+  static Future<Map<String, dynamic>?> getAiStatus() async {
     try {
       final dio = ApiClient.instance.dio;
       final response = await dio.get('/ai/status');
       if (response.statusCode == 200 && response.data is Map) {
-        final data = response.data as Map<String, dynamic>;
-        return data['semanticSearch'] == true ||
-            data['enabled'] == true ||
-            data['available'] == true;
+        return Map<String, dynamic>.from(response.data as Map);
       }
     } catch (_) {}
-    return false;
+    return null;
+  }
+
+  static Future<bool> isSemanticSearchAvailable() async {
+    final status = await getAiStatus();
+    if (status == null) return false;
+    return status['globalEnabled'] == true &&
+        status['semanticSearchEnabled'] == true &&
+        status['semanticProviderReady'] == true;
   }
 
   // Kept for backward compat

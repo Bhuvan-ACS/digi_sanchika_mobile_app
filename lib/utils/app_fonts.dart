@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
-const String poppins = "Poppins";
+/// The bundled application typeface. The legacy helper names below are kept
+/// for source compatibility while all styles now render in General Sans.
+const String appFontFamily = 'General Sans';
+const String poppins = appFontFamily;
 
 /// App-wide default font, registered in pubspec.yaml from assets/fonts/general_sans.
 const String appFontFamily = "GeneralSans";

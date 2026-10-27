@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:digi_sanchika/models/folder.dart';
 import 'package:digi_sanchika/utils/app_theme.dart';
+import 'package:digi_sanchika/widgets/folder_illustration.dart';
 
 class FolderCard extends StatelessWidget {
   final Folder folder;
@@ -63,29 +64,12 @@ class FolderCard extends StatelessWidget {
                     Container(
                       width: 42,
                       height: 42,
+                      alignment: Alignment.center,
                       decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            color.withAlpha(200),
-                            color,
-                          ],
-                        ),
+                        color: AppColors.primary.withAlpha(20),
                         borderRadius: BorderRadius.circular(AppRadius.sm),
-                        boxShadow: [
-                          BoxShadow(
-                            color: color.withAlpha(70),
-                            blurRadius: 8,
-                            offset: const Offset(0, 3),
-                          ),
-                        ],
                       ),
-                      child: const Icon(
-                        Icons.folder_rounded,
-                        color: Colors.white,
-                        size: 22,
-                      ),
+                      child: const FolderIllustration(size: 24),
                     ),
 
                     const Spacer(),
@@ -93,6 +77,12 @@ class FolderCard extends StatelessWidget {
                     // Three-dot menu
                     PopupMenuButton<String>(
                       padding: EdgeInsets.zero,
+                      position: PopupMenuPosition.under,
+                      offset: const Offset(0, 6),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      elevation: 8,
                       iconSize: 18,
                       icon: Container(
                         width: 28,
@@ -104,7 +94,7 @@ class FolderCard extends StatelessWidget {
                           border: Border.all(color: AppColors.border),
                         ),
                         child: const Icon(
-                          Icons.more_horiz_rounded,
+                          Icons.more_vert_rounded,
                           size: 16,
                           color: AppColors.textSecondary,
                         ),

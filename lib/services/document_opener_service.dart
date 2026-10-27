@@ -381,6 +381,13 @@ class DocumentOpenerService {
         return 'GIF';
       case '.bmp':
         return 'BMP';
+      case '.mp4':
+      case '.m4v':
+      case '.mov':
+      case '.webm':
+      case '.mkv':
+      case '.3gp':
+        return ext.replaceAll('.', '').toUpperCase();
       default:
         if (document.type.isNotEmpty) {
           return document.type.toUpperCase();

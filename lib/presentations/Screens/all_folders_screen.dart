@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:digi_sanchika/utils/app_fonts.dart';
+import 'package:digi_sanchika/widgets/folder_illustration.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:digi_sanchika/models/document.dart';
@@ -11,9 +12,11 @@ import 'package:digi_sanchika/services/api_service.dart';
 import 'package:digi_sanchika/services/folder_download_service.dart';
 import 'package:digi_sanchika/services/document_opener_service.dart';
 import 'package:digi_sanchika/services/my_documents_service.dart';
+import 'package:digi_sanchika/services/document_library_service.dart';
 import 'package:digi_sanchika/utils/responsive_helper.dart';
 import 'package:digi_sanchika/widgets/download_feedback.dart';
 import 'package:digi_sanchika/widgets/dismiss_keyboard.dart';
+import 'package:digi_sanchika/widgets/folder_tile.dart';
 import 'package:digi_sanchika/widgets/share_access_sheet.dart';
 
 class AllFoldersScreen extends StatefulWidget {
@@ -35,6 +38,8 @@ class _AllFoldersScreenState extends State<AllFoldersScreen> {
   String? _docSearchError;
   List<Document> _searchDocuments = const [];
   final Map<String, String> _folderPathCache = {};
+  final Set<String> _publishingFolderIds = {};
+  final Set<String> _publishedFolderIds = {};
 
   List<Folder> _allFolders = const [];
 
@@ -60,10 +65,14 @@ class _AllFoldersScreenState extends State<AllFoldersScreen> {
     if (showLoading) setState(() => _loading = true);
     try {
       final folders = await _getAllFoldersFlat();
+      final publishedFolders = await DocumentLibraryService().fetchLibraryFolders();
       folders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       if (!mounted) return;
       setState(() {
         _allFolders = folders;
+        _publishedFolderIds
+          ..clear()
+          ..addAll(publishedFolders.map((folder) => folder.id));
         _folderPathCache.clear();
         _loading = false;
       });
@@ -215,7 +224,7 @@ class _AllFoldersScreenState extends State<AllFoldersScreen> {
       final result = await MyDocumentsService.keywordSearch(
         query: q,
         scope: 'mine',
-        limit: 100,
+        limit: 30,
       );
 
       if (!mounted) return;
@@ -493,144 +502,308 @@ class _AllFoldersScreenState extends State<AllFoldersScreen> {
     );
   }
 
+  Future<void> _publishFolder(Folder folder) async {
+    if (_publishingFolderIds.contains(folder.id)) return;
+    setState(() => _publishingFolderIds.add(folder.id));
+    try {
+      final isPublished = _publishedFolderIds.contains(folder.id);
+      final service = DocumentLibraryService();
+      final result = isPublished
+          ? await service.unpublishFolder(folder.id)
+          : await service.publishFolder(folder.id);
+      if (!mounted) return;
+      if (result['success'] == true) {
+        setState(() {
+          if (isPublished) {
+            _publishedFolderIds.remove(folder.id);
+          } else {
+            _publishedFolderIds.add(folder.id);
+          }
+        });
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            (result['message'] ??
+                    (result['success'] == true
+                        ? (isPublished
+                              ? 'Folder unpublished from library'
+                              : 'Folder published to library')
+                        : 'Folder publish failed'))
+                .toString(),
+          ),
+          backgroundColor: result['success'] == true ? Colors.green : Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _publishingFolderIds.remove(folder.id));
+    }
+  }
+
+  String _folderSizeLabel(Folder folder) {
+    final sizes = folder.documents
+        .map((document) => document.size.trim())
+        .where((size) => size.isNotEmpty)
+        .toList();
+    return sizes.isEmpty ? '0 KB' : sizes.first;
+  }
+
+  String _folderAgeLabel(Folder folder) {
+    final days = DateTime.now().difference(folder.createdAt).inDays;
+    if (days <= 0) return 'today';
+    if (days < 7) return '${days}d ago';
+    final weeks = days ~/ 7;
+    if (weeks < 5) return '${weeks}w ago';
+    final months = days ~/ 30;
+    if (months < 12) return '${months}mo ago';
+    return '${days ~/ 365}y ago';
+  }
+
   Widget _buildFolderCard(Folder folder) {
     final r = context.r;
+    final radius = BorderRadius.circular(r.p(20));
+    final fileCount = folder.documents.length;
+
     return Container(
       margin: EdgeInsets.only(bottom: r.p(10)),
       child: Material(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(r.p(12)),
-        // elevation: 1,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(r.p(12)),
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => FolderScreen(
-                  folderId: folder.id,
-                  folderName: folder.name,
-                  userName: widget.userName,
-                ),
+        color: Colors.transparent,
+        borderRadius: radius,
+        child: Ink(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: radius,
+            border: Border.all(color: Colors.grey.shade100, width: 1.2),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 16,
+                offset: const Offset(0, 4),
               ),
-            );
-          },
-          onLongPress: () => _deleteFolder(folder),
-          child: Container(
-            padding: EdgeInsets.symmetric(horizontal: r.p(14), vertical: r.p(11)),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(r.p(12)),
-              border: Border.all(color: Colors.grey.shade200, width: 1),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  padding: EdgeInsets.all(r.p(9)),
-                  decoration: BoxDecoration(
-                    color: Colors.amber.shade50,
-                    borderRadius: BorderRadius.circular(r.p(10)),
-                  ),
-                  child: Icon(
-                    Icons.folder,
-                    color: Colors.amber.shade700,
-                    size: r.sp(26),
+            ],
+          ),
+          child: InkWell(
+            borderRadius: radius,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => FolderScreen(
+                    folderId: folder.id,
+                    folderName: folder.name,
+                    userName: widget.userName,
                   ),
                 ),
-                SizedBox(width: r.p(14)),
-                Expanded(
-                  child: Text(
+              );
+            },
+            onLongPress: () => _deleteFolder(folder),
+            child: Padding(
+              padding: EdgeInsets.all(r.p(16)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Container(
+                        width: r.p(54),
+                        height: r.p(54),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEAF2FF),
+                          borderRadius: BorderRadius.circular(r.p(16)),
+                        ),
+                        child: FolderIllustration(size: r.p(38)),
+                      ),
+                      PopupMenuButton<String>(
+                        padding: EdgeInsets.zero,
+                        icon: Icon(
+                          Icons.more_horiz,
+                          size: r.sp(24),
+                          color: Colors.grey.shade400,
+                        ),
+                        onSelected: (value) {
+                          if (value == 'download') {
+                            _downloadFolderFiles(folder);
+                          } else if (value == 'download_zip') {
+                            _downloadFolderZip(folder);
+                          } else if (value == 'share') {
+                            _shareFolder(folder);
+                          } else if (value == 'publish') {
+                            _publishFolder(folder);
+                          } else if (value == 'delete') {
+                            _deleteFolder(folder);
+                          }
+                        },
+                        itemBuilder: (context) => [
+                          PopupMenuItem(
+                            value: 'download',
+                            child: Row(
+                              children: [
+                                Icon(Icons.download_rounded, size: r.sp(18), color: Colors.green),
+                                SizedBox(width: r.p(8)),
+                                const Text('Download'),
+                              ],
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: 'download_zip',
+                            child: Row(
+                              children: [
+                                Icon(Icons.archive_rounded, size: r.sp(18), color: Colors.green),
+                                SizedBox(width: r.p(8)),
+                                const Text('Download as ZIP'),
+                              ],
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: 'share',
+                            child: Row(
+                              children: [
+                                Icon(Icons.share, size: r.sp(18), color: Colors.blue),
+                                SizedBox(width: r.p(8)),
+                                const Text('Share Folder'),
+                              ],
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: 'publish',
+                            child: Row(
+                              children: [
+                                Icon(
+                                  _publishedFolderIds.contains(folder.id)
+                                      ? Icons.unpublished_rounded
+                                      : Icons.library_add_rounded,
+                                  size: r.sp(18),
+                                  color: _publishedFolderIds.contains(folder.id)
+                                      ? Colors.orange
+                                      : Colors.indigo,
+                                ),
+                                SizedBox(width: r.p(8)),
+                                Text(
+                                  _publishedFolderIds.contains(folder.id)
+                                      ? 'Unpublish from Library'
+                                      : 'Publish to Library',
+                                ),
+                              ],
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: 'delete',
+                            child: Row(
+                              children: [
+                                Icon(Icons.delete, size: r.sp(18), color: Colors.red),
+                                SizedBox(width: r.p(8)),
+                                const Text('Delete Folder'),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: r.p(16)),
+                  Text(
                     folder.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: r.sp(15),
+                      fontSize: r.sp(18),
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF1E293B),
                     ),
+                  ),
+                  SizedBox(height: r.p(5)),
+                  Text(
+                    '$fileCount ${fileCount == 1 ? 'file' : 'files'}',
+                    style: TextStyle(
+                      fontSize: r.sp(14),
+                      fontWeight: FontWeight.w500,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                  SizedBox(height: r.p(20)),
+                  Text(
+                    '${_folderSizeLabel(folder)}  •  ${_folderAgeLabel(folder)}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                SizedBox(width: r.p(4)),
-                PopupMenuButton<String>(
-                  onSelected: (value) {
-                    if (value == 'download') {
-                      _downloadFolderFiles(folder);
-                    } else if (value == 'download_zip') {
-                      _downloadFolderZip(folder);
-                    } else if (value == 'share') {
-                      _shareFolder(folder);
-                    } else if (value == 'delete') {
-                      _deleteFolder(folder);
-                    }
-                  },
-                  itemBuilder: (context) => [
-                    PopupMenuItem(
-                      value: 'download',
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.download_rounded,
-                            size: r.sp(18),
-                            color: Colors.green,
-                          ),
-                          SizedBox(width: r.p(8)),
-                          const Text('Download'),
-                        ],
-                      ),
-                    ),
-                    PopupMenuItem(
-                      value: 'download_zip',
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.archive_rounded,
-                            size: r.sp(18),
-                            color: Colors.green,
-                          ),
-                          SizedBox(width: r.p(8)),
-                          const Text('Download as ZIP'),
-                        ],
-                      ),
-                    ),
-                    PopupMenuItem(
-                      value: 'share',
-                      child: Row(
-                        children: [
-                          Icon(Icons.share, size: r.sp(18), color: Colors.blue),
-                          SizedBox(width: r.p(8)),
-                          const Text('Share Folder'),
-                        ],
-                      ),
-                    ),
-                    PopupMenuItem(
-                      value: 'delete',
-                      child: Row(
-                        children: [
-                          Icon(Icons.delete, size: r.sp(18), color: Colors.red),
-                          SizedBox(width: r.p(8)),
-                          const Text('Delete Folder'),
-                        ],
-                      ),
-                    ),
-                  ],
-                  child: Container(
-                    width: r.p(34),
-                    height: r.p(34),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Center(
-                      child: Icon(
-                        Icons.more_vert,
-                        size: r.sp(18),
-                        color: Colors.grey.shade600,
-                      ),
+                    style: TextStyle(
+                      fontSize: r.sp(13),
+                      fontWeight: FontWeight.w500,
+                      color: Colors.grey.shade400,
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildReferenceFolderCard(Folder folder) {
+    final r = context.r;
+    final fileCount = folder.documents.length;
+    final files = '$fileCount ${fileCount == 1 ? 'file' : 'files'}';
+
+    return FolderTile(
+      title: folder.name,
+      details: [
+        files,
+        '${_folderSizeLabel(folder)} · ${_folderAgeLabel(folder)}',
+      ],
+      frontTop: 0.4,
+      tabWidth: 0.34,
+      titleSize: r.sp(15),
+      detailSize: r.sp(11.5),
+      titleLines: 2,
+      contentPadding: EdgeInsets.fromLTRB(r.p(14), 0, r.p(4), r.p(10)),
+      radius: BorderRadius.circular(r.p(20)),
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => FolderScreen(
+              folderId: folder.id,
+              folderName: folder.name,
+              userName: widget.userName,
+            ),
+          ),
+        );
+      },
+      onLongPress: () => _deleteFolder(folder),
+      menu: PopupMenuButton<String>(
+        padding: EdgeInsets.zero,
+        icon: Icon(Icons.more_horiz, size: r.sp(24), color: Colors.white),
+        onSelected: (value) {
+          if (value == 'download') {
+            _downloadFolderFiles(folder);
+          } else if (value == 'download_zip') {
+            _downloadFolderZip(folder);
+          } else if (value == 'share') {
+            _shareFolder(folder);
+          } else if (value == 'publish') {
+            _publishFolder(folder);
+          } else if (value == 'delete') {
+            _deleteFolder(folder);
+          }
+        },
+        itemBuilder: (context) => [
+          PopupMenuItem(value: 'download', child: Text('Download')),
+          PopupMenuItem(value: 'download_zip', child: Text('Download as ZIP')),
+          PopupMenuItem(value: 'share', child: Text('Share Folder')),
+          PopupMenuItem(
+            value: 'publish',
+            child: Text(
+              _publishedFolderIds.contains(folder.id)
+                  ? 'Unpublish from Library'
+                  : 'Publish to Library',
+            ),
+          ),
+          PopupMenuItem(value: 'delete', child: Text('Delete Folder')),
+        ],
       ),
     );
   }
@@ -799,7 +972,7 @@ iconTheme: IconThemeData(color: Colors.black87),
                       padding: EdgeInsets.symmetric(horizontal: r.p(14)),
                       sliver: SliverList(
                         delegate: SliverChildBuilderDelegate(
-                          (context, i) => _buildFolderCard(folders[i]),
+                          (context, i) => _buildReferenceFolderCard(folders[i]),
                           childCount: folders.length,
                         ),
                       ),
@@ -809,14 +982,14 @@ iconTheme: IconThemeData(color: Colors.black87),
                       padding: EdgeInsets.symmetric(horizontal: r.p(14)),
                       sliver: SliverGrid(
                         delegate: SliverChildBuilderDelegate(
-                          (context, i) => _buildFolderCard(folders[i]),
+                          (context, i) => _buildReferenceFolderCard(folders[i]),
                           childCount: folders.length,
                         ),
                         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: crossAxisCount,
                           crossAxisSpacing: r.p(12),
                           mainAxisSpacing: r.p(12),
-                          childAspectRatio: 3.4,
+                          childAspectRatio: 1.08,
                         ),
                       ),
                     ),
