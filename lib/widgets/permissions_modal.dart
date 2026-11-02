@@ -1,5 +1,4 @@
 // ignore_for_file: use_build_context_synchronously
-import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -54,49 +53,26 @@ class _PermissionsModalState extends State<_PermissionsModal>
 
   // ── Permission items ────────────────────────────────────────────────────────
 
-  List<_PermItem> get _items {
-    if (Platform.isIOS) {
-      return const [
+  List<_PermItem> get _items => const [
         _PermItem(
-          icon: Icons.photo_library_outlined,
+          icon: Icons.camera_alt_outlined,
+          color: Color(0xFF1976D2),
+          title: 'Camera',
+          description: 'Used to scan and digitise documents.',
+        ),
+        _PermItem(
+          icon: Icons.mic_none_outlined,
           color: Color(0xFF9C27B0),
-          title: 'Photos & Media',
-          description:
-              'Access your photo library to upload images and videos to your workspace.',
+          title: 'Microphone',
+          description: 'Used for voice search across your documents.',
+        ),
+        _PermItem(
+          icon: Icons.notifications_none_outlined,
+          color: Color(0xFFE65100),
+          title: 'Notifications',
+          description: 'Used to alert you about document and account updates.',
         ),
       ];
-    }
-    return const [
-      _PermItem(
-        icon: Icons.folder_open_outlined,
-        color: Color(0xFF1976D2),
-        title: 'Files & Storage',
-        description:
-            'Access device files to upload documents, spreadsheets, and other files.',
-      ),
-      _PermItem(
-        icon: Icons.photo_library_outlined,
-        color: Color(0xFF9C27B0),
-        title: 'Photos & Images',
-        description:
-            'Access your photos to upload images and visual content to your workspace.',
-      ),
-      _PermItem(
-        icon: Icons.video_library_outlined,
-        color: Color(0xFFE53935),
-        title: 'Videos',
-        description:
-            'Access video files to upload recordings and media content.',
-      ),
-      _PermItem(
-        icon: Icons.audio_file_outlined,
-        color: Color(0xFFE65100),
-        title: 'Audio Files',
-        description:
-            'Access audio recordings to upload voice and media content.',
-      ),
-    ];
-  }
 
   // ── Actions ─────────────────────────────────────────────────────────────────
 
@@ -237,7 +213,7 @@ class _PermissionsModalState extends State<_PermissionsModal>
                     const SizedBox(height: 8),
 
                     Text(
-                      'Digi Sanchika needs the following permissions to let you upload and manage your documents.',
+                      'Digi Sanchika needs the following permissions to scan documents, search by voice, and keep you updated.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: Colors.white.withAlpha(210),

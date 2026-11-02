@@ -7,6 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../../models/scanned_page.dart';
+import 'scan_crop_screen.dart';
 import 'scan_review_screen.dart';
 
 /// ---------------------------------------------------------------------------
@@ -41,6 +43,11 @@ class DocumentScanScreen extends StatefulWidget {
   State<DocumentScanScreen> createState() => _DocumentScanScreenState();
 }
 
+/// CamScanner-style capture mode:
+///   • single — one shot goes straight to the save screen, no further capture
+///   • multi  — keep capturing pages, review/reorder them, then save
+enum _CaptureMode { single, multi }
+
 class _DocumentScanScreenState extends State<DocumentScanScreen>
     with TickerProviderStateMixin {
   // ── Camera ──────────────────────────────────────────────────────────────
@@ -50,9 +57,10 @@ class _DocumentScanScreenState extends State<DocumentScanScreen>
   bool _isCapturing = false;
   FlashMode _flashMode = FlashMode.off;
   bool _isAutoMode = true; // auto edge-detect hint
+  _CaptureMode _captureMode = _CaptureMode.multi;
 
   // ── Captured pages ──────────────────────────────────────────────────────
-  final List<File> _capturedPages = [];
+  final List<ScannedPage> _capturedPages = [];
 
   // ── Animations ──────────────────────────────────────────────────────────
   late AnimationController _scanLineController;
@@ -172,13 +180,34 @@ class _DocumentScanScreenState extends State<DocumentScanScreen>
       );
       await File(xFile.path).copy(dest.path);
 
-      setState(() {
-        _capturedPages.add(dest);
-        _isCapturing = false;
-      });
-
-      // Brief white-flash feedback
+      // Brief white-flash feedback for the shutter itself.
       _showCaptureFlash();
+      setState(() => _isCapturing = false);
+
+      // CamScanner-style: show the edge-detect/crop screen for THIS page
+      // right away, before capturing (or reviewing) anything else — not a
+      // "recrop later" afterthought. The user sees and can fix the
+      // auto-detected quad before it's ever committed.
+      final cropped = await Navigator.push<File>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => DocumentCropScreen(imageFile: dest),
+          fullscreenDialog: true,
+        ),
+      );
+
+      if (!mounted) return;
+      if (cropped == null) return; // user retook — nothing to add
+
+      final page = ScannedPage(raw: dest, cropped: cropped);
+
+      if (_captureMode == _CaptureMode.single) {
+        // Single-page mode: this one shot IS the document — go straight to
+        // review/save instead of waiting for more captures.
+        await _openReviewWith([page]);
+      } else {
+        setState(() => _capturedPages.add(page));
+      }
     } catch (e) {
       setState(() => _isCapturing = false);
       _showError('Capture failed: $e');
@@ -199,13 +228,15 @@ class _DocumentScanScreenState extends State<DocumentScanScreen>
   }
 
   // ── Review ────────────────────────────────────────────────────────────────
-  void _openReview() {
-    if (_capturedPages.isEmpty) return;
-    Navigator.push(
+  Future<void> _openReview() => _openReviewWith(_capturedPages);
+
+  Future<void> _openReviewWith(List<ScannedPage> pages) async {
+    if (pages.isEmpty) return;
+    final result = await Navigator.push<List<ScannedPage>>(
       context,
       MaterialPageRoute(
         builder: (_) => ScanReviewScreen(
-          pages: List<File>.from(_capturedPages),
+          pages: List<ScannedPage>.from(pages),
           folders: widget.folders,
           userName: widget.userName,
           onSaved: (File savedFile) {
@@ -215,6 +246,18 @@ class _DocumentScanScreenState extends State<DocumentScanScreen>
         ),
       ),
     );
+
+    // Keep the camera screen's captured-pages list in sync with whatever
+    // edits (deletions, reorders, filters) happened in the review screen —
+    // e.g. tapping "add more" there drops the user back here to keep
+    // capturing, picking up wherever the review left the page list.
+    if (result != null && mounted) {
+      setState(() {
+        _capturedPages
+          ..clear()
+          ..addAll(result);
+      });
+    }
   }
 
   void _showError(String msg) {
@@ -368,27 +411,62 @@ class _DocumentScanScreenState extends State<DocumentScanScreen>
       right: 0,
       child: SafeArea(
         bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          child: Row(
-            children: [
-              // Close
-              _IconBtn(
-                icon: Icons.close,
-                onTap: () => Navigator.pop(context),
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: Row(
+                children: [
+                  // Close
+                  _IconBtn(
+                    icon: Icons.close,
+                    onTap: () => Navigator.pop(context),
+                  ),
+                  const Spacer(),
+                  // Auto / Manual toggle
+                  _LabelBtn(
+                    label: _isAutoMode ? 'Auto' : 'Manual',
+                    onTap: () => setState(() => _isAutoMode = !_isAutoMode),
+                  ),
+                  const SizedBox(width: 8),
+                  // Flash
+                  _IconBtn(icon: _flashIcon, onTap: _toggleFlash),
+                ],
               ),
-              const Spacer(),
-              // Auto / Manual toggle
-              _LabelBtn(
-                label: _isAutoMode ? 'Auto' : 'Manual',
-                onTap: () => setState(() => _isAutoMode = !_isAutoMode),
-              ),
-              const SizedBox(width: 8),
-              // Flash
-              _IconBtn(icon: _flashIcon, onTap: _toggleFlash),
-            ],
-          ),
+            ),
+            const SizedBox(height: 6),
+            _buildCaptureModeToggle(),
+          ],
         ),
+      ),
+    );
+  }
+
+  // Single vs Multiple capture mode, CamScanner-style: Single sends the very
+  // next shot straight to review/save; Multiple keeps the camera open so
+  // several pages can be captured before reviewing them together.
+  Widget _buildCaptureModeToggle() {
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: Colors.black45,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white24),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _ModeSegment(
+            label: 'Single',
+            selected: _captureMode == _CaptureMode.single,
+            onTap: () => setState(() => _captureMode = _CaptureMode.single),
+          ),
+          _ModeSegment(
+            label: 'Multiple',
+            selected: _captureMode == _CaptureMode.multi,
+            onTap: () => setState(() => _captureMode = _CaptureMode.multi),
+          ),
+        ],
       ),
     );
   }
@@ -446,7 +524,7 @@ class _DocumentScanScreenState extends State<DocumentScanScreen>
                 ClipRRect(
                   borderRadius: BorderRadius.circular(6),
                   child: Image.file(
-                    _capturedPages[i],
+                    _capturedPages[i].cropped,
                     width: 44,
                     height: 62,
                     fit: BoxFit.cover,
@@ -491,7 +569,7 @@ class _DocumentScanScreenState extends State<DocumentScanScreen>
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
             child: Image.file(
-              _capturedPages.last,
+              _capturedPages.last.cropped,
               width: 48,
               height: 56,
               fit: BoxFit.cover,
@@ -518,6 +596,7 @@ class _DocumentScanScreenState extends State<DocumentScanScreen>
   }
 
   Widget _buildShutter() {
+    final busy = _isCapturing;
     return GestureDetector(
       onTap: _capture,
       child: ScaleTransition(
@@ -533,9 +612,9 @@ class _DocumentScanScreenState extends State<DocumentScanScreen>
           child: Container(
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: _isCapturing ? Colors.grey : Colors.white,
+              color: busy ? Colors.grey : Colors.white,
             ),
-            child: _isCapturing
+            child: busy
                 ? const Padding(
                     padding: EdgeInsets.all(16),
                     child: CircularProgressIndicator(
@@ -669,6 +748,41 @@ class _CornerGuidesPainter extends CustomPainter {
   @override
   bool shouldRepaint(_CornerGuidesPainter old) =>
       old.opacity != opacity || old.color != color;
+}
+
+class _ModeSegment extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _ModeSegment({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? Colors.white : Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? Colors.black : Colors.white70,
+            fontSize: 13,
+            fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 // ── Small reusable button widgets ─────────────────────────────────────────────

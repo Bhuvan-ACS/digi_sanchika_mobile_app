@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- ── Internet (required for all API calls) ── -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -8,20 +9,17 @@
     <!-- ── Notifications (Android 13+ runtime permission) ── -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- ── Storage: Android 13+ (API 33+) ── -->
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
-    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <!-- Document/photo/video uploads go through file_picker, which opens the
+         system Storage Access Framework picker — this never needs a storage
+         or media-library permission grant, so none is declared here. -->
+         <!-- Remove unnecessary media permissions added by dependencies -->
+<uses-permission
+    android:name="android.permission.READ_MEDIA_IMAGES"
+    tools:node="remove" />
 
-    <!-- ── Storage: Android 9–12 (API 28–32) ── -->
-    <uses-permission
-        android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
-
-    <!-- ── Storage write: Android 9 and below (API 28) ── -->
-    <uses-permission
-        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="28" />
+<uses-permission
+    android:name="android.permission.READ_MEDIA_VIDEO"
+    tools:node="remove" />
 
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="true" />
@@ -36,7 +34,6 @@
         android:label="Digi Sanchika"
         android:name="${applicationName}"
         android:enableOnBackInvokedCallback="true"
-        android:requestLegacyExternalStorage="true"
         android:icon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"

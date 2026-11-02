@@ -6,9 +6,6 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 const String appFontFamily = 'General Sans';
 const String poppins = appFontFamily;
 
-/// App-wide default font, registered in pubspec.yaml from assets/fonts/general_sans.
-const String appFontFamily = "GeneralSans";
-
 TextStyle w300_13Poppins({Color? color = Colors.black}) {
   return TextStyle(
     fontSize: 13,

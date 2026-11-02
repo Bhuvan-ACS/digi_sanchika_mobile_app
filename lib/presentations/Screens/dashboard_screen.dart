@@ -9,6 +9,7 @@ import 'package:digi_sanchika/local_storage.dart';
 import 'package:digi_sanchika/models/document.dart';
 import 'package:digi_sanchika/models/folder.dart';
 import 'package:digi_sanchika/models/folder_tree_node.dart';
+import 'package:digi_sanchika/models/recent_activity.dart';
 import 'package:digi_sanchika/presentations/Screens/document_scan_screen.dart';
 import 'package:digi_sanchika/presentations/Screens/recent_activity_widget.dart';
 import 'package:digi_sanchika/presentations/Screens/shared_with_me_screen.dart';
@@ -19,6 +20,7 @@ import 'package:digi_sanchika/services/favorites_store.dart';
 import 'package:digi_sanchika/services/folder_operations_service.dart';
 import 'package:digi_sanchika/services/folder_tree_service.dart';
 import 'package:digi_sanchika/services/my_documents_service.dart';
+import 'package:digi_sanchika/services/recent_activity_service.dart';
 import 'package:digi_sanchika/services/shared_documents_service.dart';
 import 'package:digi_sanchika/utils/app_fonts.dart';
 import 'package:digi_sanchika/utils/responsive_helper.dart';
@@ -64,6 +66,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   FolderTreeNode? _currentFolder;
   final SharedDocumentsService _sharedService = SharedDocumentsService();
   List<Document> sharedDocuments = [];
+  final RecentActivityService _activityService = RecentActivityService();
+  List<RecentActivity> _recentActivity = [];
+  bool _activityLoading = true;
+  bool _activityFailed = false;
 
   bool _didChange = false; // Used to notify previous screen to refresh.
 
@@ -95,6 +101,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
       print("Shared docs: ${sharedDocuments.length}");
     } catch (e) {
       print("Shared documents error: $e");
+    }
+  }
+
+  Future<void> _loadRecentActivity() async {
+    try {
+      final activity = await _activityService.fetchRecentActivity(limit: 5);
+      if (!mounted) return;
+      setState(() {
+        _recentActivity = activity;
+        _activityLoading = false;
+        _activityFailed = false;
+      });
+    } catch (e) {
+      print("Recent activity error: $e");
+      if (!mounted) return;
+      setState(() {
+        _activityLoading = false;
+        _activityFailed = true;
+      });
     }
   }
 
@@ -450,7 +475,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await ApiService.checkConnection();
     if (ApiService.isConnected) {
       // await _loadAllUserDocuments();
-      await _loadFavorites();
+      await Future.wait([_loadFavorites(), _loadRecentActivity()]);
     } else {
       await _loadDataFromLocalStorage();
       if (mounted) {
@@ -476,6 +501,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _loadInitialData();
 
     _loadSharedDocuments();
+    _loadRecentActivity();
   }
 
   @override
@@ -687,69 +713,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             const SizedBox(height: 4),
             const SectionHeader(title: 'Activity'),
             height10,
-            ActivityFeed(
-              activities: [
-                ActivityItem(
-                  icon: Icons.check,
-                  iconColor: Colors.green,
-                  iconBackground: Colors.green.withOpacity(0.12),
-                  textSpans: [
-                    TextSpan(text: 'You ', style: w400_14Poppins()),
-                    TextSpan(text: 'approved', style: w600_14Poppins()),
-                    TextSpan(
-                      text: " Ravi's edit request on ",
-                      style: w400_14Poppins(),
-                    ),
-                    TextSpan(text: 'recuirement.pptx', style: w600_14Poppins()),
-                  ],
-                  timeAgo: '18 minutes ago',
-                ),
-                ActivityItem(
-                  icon: Icons.upload,
-                  iconColor: Colors.indigo,
-                  iconBackground: Colors.indigo.withOpacity(0.12),
-                  textSpans: [
-                    TextSpan(text: 'You ', style: w400_14Poppins()),
-                    TextSpan(text: 'uploaded', style: w600_14Poppins()),
-                    TextSpan(text: ' 3 files to ', style: w400_14Poppins()),
-                    TextSpan(text: 'Payroll', style: w600_14Poppins()),
-                  ],
-                  timeAgo: '2 hours ago',
-                ),
-                ActivityItem(
-                  icon: Icons.share,
-                  iconColor: Colors.purple,
-                  iconBackground: Colors.purple.withOpacity(0.12),
-                  textSpans: [
-                    TextSpan(text: 'Meera ', style: w400_14Poppins()),
-                    TextSpan(text: 'shared', style: w600_14Poppins()),
-                    TextSpan(
-                      text: ' Vendor Agreement.pdf with you',
-                      style: w400_14Poppins(),
-                    ),
-                  ],
-                  timeAgo: 'Yesterday',
-                ),
-                ActivityItem(
-                  icon: Icons.edit,
-                  iconColor: Colors.orange,
-                  iconBackground: Colors.orange.withOpacity(0.12),
-                  textSpans: [
-                    TextSpan(text: 'You ', style: w400_14Poppins()),
-                    TextSpan(text: 'renamed', style: w600_14Poppins()),
-                    TextSpan(
-                      text: ' Invoice_final.pdf to ',
-                      style: w400_14Poppins(),
-                    ),
-                    TextSpan(
-                      text: 'Invoice March.pdf',
-                      style: w600_16Poppins(),
-                    ),
-                  ],
-                  timeAgo: '2 days ago',
-                ),
-              ],
-            ),
+            _buildRecentActivity(),
           ],
         ),
       ),
@@ -2148,6 +2112,144 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String _recentDocumentSubtitle(Document doc) {
     final size = doc.size.trim().isEmpty ? 'Unknown' : doc.size.trim();
     return '${_formatDateDDMMYYYY(doc.uploadDate)} \u2022 $size';
+  }
+
+  Widget _buildRecentActivity() {
+    if (_activityLoading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 24),
+        child: Center(
+          child: SizedBox(
+            width: 22,
+            height: 22,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      );
+    }
+
+    if (_recentActivity.isEmpty) {
+      return Container(
+        height: 80.h,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x120F172A),
+              blurRadius: 14,
+              offset: Offset(0, 4),
+            ),
+          ],
+        ),
+        child: GestureDetector(
+          onTap: _activityFailed
+              ? () {
+                  setState(() => _activityLoading = true);
+                  _loadRecentActivity();
+                }
+              : null,
+          child: Text(
+            _activityFailed
+                ? 'Couldn\'t load activity. Tap to retry'
+                : 'No recent activity',
+            style: const TextStyle(color: UiColors.textMuted),
+          ),
+        ),
+      );
+    }
+
+    return ActivityFeed(
+      activities: _recentActivity.map(_toActivityItem).toList(),
+    );
+  }
+
+  ActivityItem _toActivityItem(RecentActivity activity) {
+    final (IconData icon, Color color, String verb) = switch (activity
+        .action) {
+      'create' || 'upload' => (Icons.upload, Colors.indigo, 'created'),
+      'edit' || 'update' => (Icons.edit, Colors.orange, 'edited'),
+      'rename' => (Icons.drive_file_rename_outline, Colors.orange, 'renamed'),
+      'version_update' => (Icons.history, Colors.blue, 'updated'),
+      'version_restore' => (Icons.restore, Colors.teal, 'restored a version of'),
+      'soft_delete' || 'delete' => (
+        Icons.delete_outline,
+        Colors.red,
+        'deleted',
+      ),
+      'restore' => (Icons.restore_from_trash, Colors.teal, 'restored'),
+      'add_comment' => (Icons.comment_outlined, Colors.purple, 'commented on'),
+      'share' => (Icons.share, Colors.purple, 'shared'),
+      'download' => (Icons.download, Colors.green, 'downloaded'),
+      'move' => (Icons.drive_file_move_outline, Colors.blueGrey, 'moved'),
+      _ => (
+        Icons.check,
+        Colors.green,
+        activity.action.replaceAll('_', ' ').trim(),
+      ),
+    };
+
+    final version = activity.metadata['versionNumber'];
+    return ActivityItem(
+      icon: icon,
+      iconColor: color,
+      iconBackground: color.withValues(alpha: 0.12),
+      textSpans: [
+        TextSpan(text: 'You ', style: w400_14Poppins()),
+        TextSpan(text: verb, style: w600_14Poppins()),
+        TextSpan(text: ' ', style: w400_14Poppins()),
+        TextSpan(text: _activityTargetName(activity), style: w600_14Poppins()),
+        if (version != null)
+          TextSpan(text: ' (v$version)', style: w400_14Poppins()),
+      ],
+      timeAgo: _timeAgo(activity.createdAt),
+    );
+  }
+
+  /// The API only returns ids, so resolve the name from data already loaded
+  /// (metadata first, then documents / folders), falling back to the type.
+  String _activityTargetName(RecentActivity activity) {
+    for (final key in const ['name', 'fileName', 'documentName', 'folderName', 'title']) {
+      final value = activity.metadata[key]?.toString().trim();
+      if (value != null && value.isNotEmpty) return value;
+    }
+
+    final id = activity.resourceId;
+    final type = activity.resourceType?.toLowerCase() ?? '';
+    if (id != null && id.isNotEmpty) {
+      if (type != 'folder') {
+        for (final doc in allDocuments) {
+          if (doc.id == id) return doc.name;
+        }
+      }
+      if (type != 'document') {
+        for (final folder in folders) {
+          if (folder.id == id) return folder.name;
+        }
+        for (final root in _rootFolders) {
+          final node = root.findNodeById(id);
+          if (node != null) return node.name;
+        }
+      }
+    }
+
+    return type.isEmpty ? 'an item' : 'a $type';
+  }
+
+  String _timeAgo(DateTime? time) {
+    if (time == null) return '';
+    final diff = DateTime.now().difference(time);
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inMinutes < 60) {
+      return '${diff.inMinutes} minute${diff.inMinutes == 1 ? '' : 's'} ago';
+    }
+    if (diff.inHours < 24) {
+      return '${diff.inHours} hour${diff.inHours == 1 ? '' : 's'} ago';
+    }
+    if (diff.inDays == 1) return 'Yesterday';
+    if (diff.inDays < 7) return '${diff.inDays} days ago';
+    return DateFormat('dd MMM yyyy').format(time);
   }
 
   Widget UploadDocument({

@@ -1,11 +1,13 @@
 // ignore_for_file: use_build_context_synchronously
 import 'dart:io';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
-import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 
+import '../../models/scanned_page.dart';
+import '../../services/scan_image_processor.dart';
+import 'scan_crop_screen.dart';
 import 'scan_save_screen.dart';
 
 // ---------------------------------------------------------------------------
@@ -21,7 +23,7 @@ import 'scan_save_screen.dart';
 //   • "Save" opens ScanSaveScreen
 // ---------------------------------------------------------------------------
 class ScanReviewScreen extends StatefulWidget {
-  final List<File> pages;
+  final List<ScannedPage> pages;
   final List<dynamic> folders;
   final String? userName;
   final Function(File) onSaved;
@@ -41,12 +43,16 @@ class ScanReviewScreen extends StatefulWidget {
 enum ScanFilter { color, grayscale, blackWhite }
 
 class _PageState {
-  File file;
+  final File raw; // untouched camera shot — re-cropped from this on "Recrop"
+  File original; // auto/manually cropped base — filter/rotation re-process from this
+  File file; // currently displayed (processed) output
   ScanFilter filter;
   int rotation; // degrees: 0 | 90 | 180 | 270
   bool isProcessing;
 
   _PageState({
+    required this.raw,
+    required this.original,
     required this.file,
     this.filter = ScanFilter.color,
     this.rotation = 0,
@@ -62,7 +68,9 @@ class _ScanReviewScreenState extends State<ScanReviewScreen> {
   @override
   void initState() {
     super.initState();
-    _pages = widget.pages.map((f) => _PageState(file: f)).toList();
+    _pages = widget.pages
+        .map((p) => _PageState(raw: p.raw, original: p.cropped, file: p.cropped))
+        .toList();
     _pageController = PageController();
   }
 
@@ -73,13 +81,16 @@ class _ScanReviewScreenState extends State<ScanReviewScreen> {
   }
 
   // ── Filter application ─────────────────────────────────────────────────
+  // Always re-processes from the untouched `original` capture so switching
+  // filters is reversible (e.g. Grayscale -> Color doesn't stay grey) and
+  // doesn't stack on top of whatever was rendered previously.
   Future<void> _applyFilter(int index, ScanFilter filter) async {
     if (_pages[index].filter == filter) return;
     setState(() => _pages[index].isProcessing = true);
 
     try {
       final processed = await _processImage(
-        _pages[index].file,
+        _pages[index].original,
         filter,
         _pages[index].rotation,
       );
@@ -95,12 +106,15 @@ class _ScanReviewScreenState extends State<ScanReviewScreen> {
   }
 
   // ── Rotation ───────────────────────────────────────────────────────────
+  // Always rotates the untouched `original` by the cumulative angle instead
+  // of re-rotating the already-rotated output, which previously compounded
+  // (e.g. tapping "Rotate R" twice landed on 270° instead of 180°).
   Future<void> _rotate(int index, int degrees) async {
     setState(() => _pages[index].isProcessing = true);
     try {
-      final newRotation = (_pages[index].rotation + degrees) % 360;
+      final newRotation = (_pages[index].rotation + degrees + 360) % 360;
       final processed = await _processImage(
-        _pages[index].file,
+        _pages[index].original,
         _pages[index].filter,
         newRotation,
       );
@@ -116,52 +130,32 @@ class _ScanReviewScreenState extends State<ScanReviewScreen> {
   }
 
   // ── Image processing ───────────────────────────────────────────────────
+  // Runs the actual decode/rotate/filter/encode work in a background isolate
+  // (compute) — this used to run inline on the UI thread, which blocked the
+  // whole screen (looking frozen/blank) while a full-resolution JPEG was
+  // processed.
   Future<File> _processImage(
     File source,
     ScanFilter filter,
     int rotation,
   ) async {
     final bytes = await source.readAsBytes();
-    img.Image? image = img.decodeImage(bytes);
-    if (image == null) return source;
+    final filterCode = switch (filter) {
+      ScanFilter.color => scanFilterColor,
+      ScanFilter.grayscale => scanFilterGrayscale,
+      ScanFilter.blackWhite => scanFilterBlackWhite,
+    };
 
-    // Apply rotation
-    if (rotation == 90) {
-      image = img.copyRotate(image, angle: 90);
-    } else if (rotation == 180) {
-      image = img.copyRotate(image, angle: 180);
-    } else if (rotation == 270) {
-      image = img.copyRotate(image, angle: 270);
-    }
-
-    // Apply filter
-    switch (filter) {
-      case ScanFilter.grayscale:
-        image = img.grayscale(image);
-        break;
-      case ScanFilter.blackWhite:
-        image = img.grayscale(image);
-        // Threshold for B&W
-        for (int y = 0; y < image.height; y++) {
-          for (int x = 0; x < image.width; x++) {
-            final pixel = image.getPixel(x, y);
-            final lum = img.getLuminance(pixel);
-            final bw = lum > 128 ? 255 : 0;
-            image.setPixelRgba(x, y, bw, bw, bw, 255);
-          }
-        }
-        break;
-      case ScanFilter.color:
-        // Boost contrast slightly for scanned docs
-        image = img.adjustColor(image, contrast: 1.15, brightness: 0.02);
-        break;
-    }
+    final outBytes = await compute(
+      processScanImage,
+      ScanProcessArgs(bytes, filterCode, rotation),
+    );
 
     final tempDir = await getTemporaryDirectory();
     final outFile = File(
       '${tempDir.path}/scan_processed_${DateTime.now().millisecondsSinceEpoch}.jpg',
     );
-    await outFile.writeAsBytes(img.encodeJpg(image, quality: 92));
+    await outFile.writeAsBytes(outBytes);
     return outFile;
   }
 
@@ -182,8 +176,8 @@ class _ScanReviewScreenState extends State<ScanReviewScreen> {
             ),
             TextButton(
               onPressed: () {
-                Navigator.of(context).pop();
-                Navigator.of(context).pop(); // back to camera
+                Navigator.of(context).pop(); // close dialog
+                _exitReview(removeAll: true); // back to camera, synced
               },
               child: const Text('Delete', style: TextStyle(color: Colors.red)),
             ),
@@ -198,6 +192,51 @@ class _ScanReviewScreenState extends State<ScanReviewScreen> {
       _currentIndex = _currentIndex.clamp(0, _pages.length - 1);
     });
     _pageController.jumpToPage(_currentIndex);
+  }
+
+  // ── Recrop ─────────────────────────────────────────────────────────────
+  // The automatic edge-detect/crop that ran right after capture isn't always
+  // perfect — this lets the user redo it from the untouched `raw` shot
+  // (never from an already-cropped file, or content trimmed by the first
+  // crop would be gone for good).
+  Future<void> _recrop(int index) async {
+    final page = _pages[index];
+    final newCropped = await Navigator.push<File>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => DocumentCropScreen(imageFile: page.raw),
+        fullscreenDialog: true,
+      ),
+    );
+    if (newCropped == null || !mounted) return;
+
+    setState(() => page.isProcessing = true);
+    try {
+      // Keep the current filter choice but reset rotation — it was framed
+      // against the old crop's orientation and may no longer apply.
+      final processed = await _processImage(newCropped, page.filter, 0);
+      setState(() {
+        page.original = newCropped;
+        page.rotation = 0;
+        page.file = processed;
+        page.isProcessing = false;
+      });
+    } catch (e) {
+      setState(() => page.isProcessing = false);
+      _showSnack('Recrop error: $e');
+    }
+  }
+
+  // ── Leave the review screen, handing the up-to-date page list back to
+  // the camera screen so its thumbnail strip/state stays in sync with any
+  // edits (deletions, reorders) made here. ─────────────────────────────────
+  void _exitReview({bool removeAll = false}) {
+    final pages = removeAll
+        ? <ScannedPage>[]
+        : _pages
+            .map((p) => ScannedPage(raw: p.raw, cropped: p.file))
+            .toList();
+    Navigator.of(context).pop(pages);
   }
 
   // ── Proceed to save ────────────────────────────────────────────────────
@@ -226,43 +265,50 @@ class _ScanReviewScreenState extends State<ScanReviewScreen> {
   Widget build(BuildContext context) {
     final page = _pages[_currentIndex];
 
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: _buildAppBar(),
-      body: Column(
-        children: [
-          // ── Page viewer ─────────────────────────────────────────────
-          Expanded(
-            child: PageView.builder(
-              controller: _pageController,
-              itemCount: _pages.length,
-              onPageChanged: (i) => setState(() => _currentIndex = i),
-              itemBuilder: (_, i) => _buildPageView(i),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        _exitReview();
+      },
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        appBar: _buildAppBar(),
+        body: Column(
+          children: [
+            // ── Page viewer ─────────────────────────────────────────────
+            Expanded(
+              child: PageView.builder(
+                controller: _pageController,
+                itemCount: _pages.length,
+                onPageChanged: (i) => setState(() => _currentIndex = i),
+                itemBuilder: (_, i) => _buildPageView(i),
+              ),
             ),
-          ),
 
-          // ── Filter toolbar ──────────────────────────────────────────
-          _buildFilterBar(page),
+            // ── Filter toolbar ──────────────────────────────────────────
+            _buildFilterBar(page),
 
-          // ── Edit toolbar ────────────────────────────────────────────
-          _buildEditBar(),
+            // ── Edit toolbar ────────────────────────────────────────────
+            _buildEditBar(),
 
-          // ── Thumbnail strip ─────────────────────────────────────────
-          _buildThumbnailStrip(),
-        ],
-      ),
-
-      // ── FAB: Save ──────────────────────────────────────────────────
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _proceed,
-        backgroundColor: Colors.green,
-        icon: const Icon(Icons.save_alt, color: Colors.white),
-        label: Text(
-          'Save  (${_pages.length} page${_pages.length > 1 ? 's' : ''})',
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            // ── Thumbnail strip ─────────────────────────────────────────
+            _buildThumbnailStrip(),
+          ],
         ),
+
+        // ── FAB: Save ──────────────────────────────────────────────────
+        floatingActionButton: FloatingActionButton.extended(
+          onPressed: _proceed,
+          backgroundColor: Colors.green,
+          icon: const Icon(Icons.save_alt, color: Colors.white),
+          label: Text(
+            'Save  (${_pages.length} page${_pages.length > 1 ? 's' : ''})',
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+        ),
+        floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 
@@ -270,14 +316,19 @@ class _ScanReviewScreenState extends State<ScanReviewScreen> {
     return AppBar(
       backgroundColor: Colors.black,
       foregroundColor: Colors.white,
+      leading: IconButton(
+        onPressed: _exitReview,
+        icon: const Icon(Icons.arrow_back),
+        tooltip: 'Back',
+      ),
       title: Text(
         'Review  ${_currentIndex + 1} / ${_pages.length}',
         style: const TextStyle(fontSize: 16),
       ),
       actions: [
-        // Add more pages (pop back to camera)
+        // Add more pages (pop back to camera, in sync)
         IconButton(
-          onPressed: () => Navigator.pop(context),
+          onPressed: _exitReview,
           icon: const Icon(Icons.add_a_photo_outlined),
           tooltip: 'Add more pages',
         ),
@@ -371,6 +422,11 @@ class _ScanReviewScreenState extends State<ScanReviewScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
+          _EditButton(
+            icon: Icons.crop,
+            label: 'Recrop',
+            onTap: () => _recrop(_currentIndex),
+          ),
           _EditButton(
             icon: Icons.rotate_left,
             label: 'Rotate L',

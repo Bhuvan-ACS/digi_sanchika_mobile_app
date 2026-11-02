@@ -40,12 +40,20 @@ class FileTypeDropdown extends StatefulWidget {
 class _FileTypeDropdownState extends State<FileTypeDropdown>
     with SingleTickerProviderStateMixin {
   final LayerLink _link = LayerLink();
-  late final AnimationController _ctrl = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 260),
-    reverseDuration: const Duration(milliseconds: 180),
-  );
+  late final AnimationController _ctrl;
   OverlayEntry? _entry;
+
+  @override
+  void initState() {
+    super.initState();
+    // Created eagerly so dispose() never builds a ticker on a dead element
+    // when the dropdown was never opened.
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 260),
+      reverseDuration: const Duration(milliseconds: 180),
+    );
+  }
 
   bool get _open => _entry != null;
   bool get _filtered => widget.value != widget.defaultKey;

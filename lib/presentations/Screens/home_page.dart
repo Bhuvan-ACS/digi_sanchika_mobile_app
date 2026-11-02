@@ -10,7 +10,7 @@ import 'package:digi_sanchika/widgets/layout_capsule.dart';
 import 'package:digi_sanchika/widgets/glass_bottom_nav.dart';
 import 'package:digi_sanchika/widgets/home_components.dart';
 import 'package:digi_sanchika/widgets/ai_sparkle_button.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:phosphor_icons/phosphor_icons.dart';
 import 'package:digi_sanchika/presentations/Screens/dashboard_screen.dart';
 import 'package:digi_sanchika/services/notifications_service.dart';
 import 'package:digi_sanchika/utils/app_fonts.dart';

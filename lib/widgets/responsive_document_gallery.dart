@@ -481,8 +481,16 @@ class _ScrollingTitleState extends State<_ScrollingTitle>
   static const _gap = 32.0;
   static const _speed = 30.0; // logical px per second
 
-  late final AnimationController _controller = AnimationController(vsync: this);
+  // Created eagerly: a lazy initializer would first run inside dispose() for
+  // titles that fit, creating a ticker on a deactivated element.
+  late final AnimationController _controller;
   double _cycle = 0; // text width + gap: one full loop distance
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this);
+  }
 
   @override
   void dispose() {
